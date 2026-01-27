@@ -13,8 +13,9 @@ from reportlab.platypus import (
 )
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
 from reportlab.pdfgen import canvas
-from datetime import datetime
 import os
+import sys
+from datetime import datetime
 
 
 class PGTAReportTemplate:
@@ -83,10 +84,23 @@ class PGTAReportTemplate:
         {"name": "Dr Suriyakumar G", "title": "Director"}
     ]
     
-    def __init__(self, assets_dir="extracted_assets"):
+    @staticmethod
+    def get_resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        try:
+            # PyInstaller creates a temp folder and stores path in _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            
+        return os.path.join(base_path, relative_path)
+
+    def __init__(self, assets_dir="assets/pgta"):
         """Initialize template with asset directory"""
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.ASSETS_DIR = os.path.join(base_dir, assets_dir)
+        # Resolve the assets directory relative to the script location
+        self.ASSETS_DIR = self.get_resource_path(assets_dir)
+        
+        # Hardcode specific asset filenames to avoid manual adaptation
         self.HEADER_LOGO = os.path.join(self.ASSETS_DIR, "image_page1_0.png")
         self.FOOTER_BANNER = os.path.join(self.ASSETS_DIR, "image_page1_1.png")
         self.FOOTER_LOGO = os.path.join(self.ASSETS_DIR, "image_page1_2.png")

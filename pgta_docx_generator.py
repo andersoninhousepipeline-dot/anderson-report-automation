@@ -9,6 +9,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import os
+import sys
 import io
 from PIL import Image as PILImage
 
@@ -56,10 +57,21 @@ class PGTADocxGenerator:
         {"name": "Dr Suriyakumar G", "title": "Director"}
     ]
     
+    @staticmethod
+    def get_resource_path(relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller """
+        try:
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            
+        return os.path.join(base_path, relative_path)
+
     def __init__(self, assets_dir="assets/pgta"):
         """Initialize DOCX generator"""
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.assets_dir = os.path.join(base_dir, assets_dir)
+        # Resolve the assets directory relative to the script location
+        self.assets_dir = self.get_resource_path(assets_dir)
+        
         self.header_logo = os.path.join(self.assets_dir, "image_page1_0.png")
         self.footer_banner = os.path.join(self.assets_dir, "image_page1_1.png")
         self.footer_logo = os.path.join(self.assets_dir, "image_page1_2.png")

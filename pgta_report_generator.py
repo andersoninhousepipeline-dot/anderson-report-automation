@@ -11,6 +11,16 @@ from pathlib import Path
 import subprocess
 import platform
 
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+
+    return os.path.join(base_path, relative_path)
+
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTabWidget, QLabel, QLineEdit, QTextEdit, QPushButton, QFileDialog,
@@ -111,6 +121,7 @@ class ReportGeneratorWorker(QThread):
                 if self.generate_pdf:
                     pdf_path = os.path.join(self.output_dir, f"{base_filename}.pdf")
                     # Use the ReportLab generator directly
+                    # assets_dir is handled internally by the generator classes using resource_path
                     pdf_generator.generate_pdf(
                         pdf_path,
                         patient_data['patient_info'],
