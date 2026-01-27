@@ -13,6 +13,7 @@ from reportlab.platypus import (
 )
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
 from reportlab.pdfgen import canvas
+from PIL import Image as PILImage
 import os
 import sys
 from datetime import datetime
@@ -34,7 +35,7 @@ class PGTAReportTemplate:
     PAGE_HEIGHT = 792  # points
     MARGIN_LEFT = 58  # Reduced from 72 to allow title in single line
     MARGIN_RIGHT = 58
-    MARGIN_TOP = 60
+    MARGIN_TOP = 100
     MARGIN_BOTTOM = 60
     CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT  # 496 points
     
@@ -87,19 +88,28 @@ class PGTAReportTemplate:
     @staticmethod
     def get_resource_path(relative_path):
         """ Get absolute path to resource, works for dev and for PyInstaller """
-        try:
-            # PyInstaller creates a temp folder and stores path in _MEIPASS
-            base_path = sys._MEIPASS
-        except Exception:
-            base_path = os.path.dirname(os.path.abspath(__file__))
+        # Try PyInstaller path
+        if hasattr(sys, '_MEIPASS'):
+            return os.path.join(sys._MEIPASS, relative_path)
             
-        return os.path.join(base_path, relative_path)
+        # Try relative to script
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        path1 = os.path.join(script_dir, relative_path)
+        if os.path.exists(path1):
+            return path1
+            
+        # Try relative to CWD
+        path2 = os.path.join(os.getcwd(), relative_path)
+        if os.path.exists(path2):
+            return path2
+            
+        return path1 # Fallback to path1 even if not exists for error reporting
 
     def __init__(self, assets_dir="assets/pgta"):
         """Initialize template with asset directory"""
         # Resolve the assets directory relative to the script location
         self.ASSETS_DIR = self.get_resource_path(assets_dir)
-        print(f"DEBUG: Resolved Assets Dir: {self.ASSETS_DIR}")
+        print(f"INFO: Assets Directory resolved to: {self.ASSETS_DIR}")
         
         # Hardcode specific asset filenames to avoid manual adaptation
         self.HEADER_LOGO = os.path.join(self.ASSETS_DIR, "image_page1_0.png")
@@ -107,8 +117,12 @@ class PGTAReportTemplate:
         self.FOOTER_LOGO = os.path.join(self.ASSETS_DIR, "image_page1_2.png")
         self.GENQA_LOGO = os.path.join(self.ASSETS_DIR, "genqa_logo.png")
         
-        print(f"DEBUG: Header Logo path: {self.HEADER_LOGO} (Exists: {os.path.exists(self.HEADER_LOGO)})")
-        print(f"DEBUG: Footer Banner path: {self.FOOTER_BANNER} (Exists: {os.path.exists(self.FOOTER_BANNER)})")
+        # Confirm critical assets exist
+        for label, path in [("HeaderLogo", self.HEADER_LOGO), ("FooterBanner", self.FOOTER_BANNER)]:
+            if not os.path.exists(path):
+                print(f"CRITICAL WARNING: Asset not found: {label} at {path}")
+            else:
+                print(f"SUCCESS: Found asset: {label}")
         
         # Create custom styles
         self.styles = getSampleStyleSheet()
@@ -307,44 +321,26 @@ class PGTAReportTemplate:
         """Add header and footer to each page"""
         canvas.saveState()
         
-        # Add header logo if exists
-        if os.path.exists(self.HEADER_LOGO):
-            # Using exact source coordinates for top banner
-            # Spans from roughly y=720 to y=791
-            canvas.drawImage(
-                self.HEADER_LOGO,
-                72, # Standard source margin
-                720,
-                width=468, # 540 - 72
-                height=72,
-                preserveAspectRatio=True,
-                mask='auto'
-            )
+        # Helper to draw using PIL for better compatibility
+        def draw_img_safe(path, x, y, w, h):
+            if os.path.exists(path):
+                try:
+                    # Drawing PIL images in reportlab is more robust
+                    with PILImage.open(path) as img:
+                        canvas.drawInlineImage(img, x, y, width=w, height=h, preserveAspectRatio=True)
+                        return True
+                except Exception as e:
+                    print(f"Error drawing image {path}: {e}")
+            return False
+
+        # Add header logo
+        draw_img_safe(self.HEADER_LOGO, 72, 720, 468, 72)
         
-        # Add footer banner if exists
-        if os.path.exists(self.FOOTER_BANNER):
-            canvas.drawImage(
-                self.FOOTER_BANNER,
-                72, # Standard source margin
-                0.4, # Exact source bottom y
-                width=468, # spans from 72 to 540
-                height=66, # spans from 0.4 to 66
-                preserveAspectRatio=True,
-                mask='auto'
-            )
+        # Add footer banner
+        draw_img_safe(self.FOOTER_BANNER, 72, 0.4, 468, 66)
         
-        # Add small footer logo if exists (NO GenQA logo - only in original assets)
-        # Add GenQA logo if exists (Positioned precisely as in source)
-        if os.path.exists(self.GENQA_LOGO):
-            canvas.drawImage(
-                self.GENQA_LOGO,
-                454, # Exact source x
-                35, # Exact source y from bottom
-                width=67,
-                height=36,
-                preserveAspectRatio=True,
-                mask='auto'
-            )
+        # Add small GenQA logo
+        draw_img_safe(self.GENQA_LOGO, 454, 35, 67, 36)
         
         canvas.restoreState()
     

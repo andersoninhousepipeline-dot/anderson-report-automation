@@ -60,18 +60,28 @@ class PGTADocxGenerator:
     @staticmethod
     def get_resource_path(relative_path):
         """ Get absolute path to resource, works for dev and for PyInstaller """
-        try:
-            base_path = sys._MEIPASS
-        except Exception:
-            base_path = os.path.dirname(os.path.abspath(__file__))
+        # Try PyInstaller path
+        if hasattr(sys, '_MEIPASS'):
+            return os.path.join(sys._MEIPASS, relative_path)
             
-        return os.path.join(base_path, relative_path)
+        # Try relative to script
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        path1 = os.path.join(script_dir, relative_path)
+        if os.path.exists(path1):
+            return path1
+            
+        # Try relative to CWD
+        path2 = os.path.join(os.getcwd(), relative_path)
+        if os.path.exists(path2):
+            return path2
+            
+        return path1 # Fallback 
 
     def __init__(self, assets_dir="assets/pgta"):
         """Initialize DOCX generator"""
         # Resolve the assets directory relative to the script location
         self.assets_dir = self.get_resource_path(assets_dir)
-        print(f"DEBUG DOCX: Assets Dir: {self.assets_dir}")
+        print(f"INFO DOCX: Assets Directory: {self.assets_dir}")
         
         self.header_logo = os.path.join(self.assets_dir, "image_page1_0.png")
         self.footer_banner = os.path.join(self.assets_dir, "image_page1_1.png")
@@ -79,7 +89,9 @@ class PGTADocxGenerator:
         self.genqa_logo = os.path.join(self.assets_dir, "genqa_logo.png")
         self.signs_image = os.path.join(self.assets_dir, "signs.png")
         
-        print(f"DEBUG DOCX: Logo exists: {os.path.exists(self.header_logo)}")
+        for label, path in [("DOCX_Logo", self.header_logo), ("DOCX_Signs", self.signs_image)]:
+             if not os.path.exists(path):
+                 print(f"WARNING DOCX: {label} not found at {path}")
     
     def _set_cell_background(self, cell, fill):
         """Set background shading for a table cell"""
