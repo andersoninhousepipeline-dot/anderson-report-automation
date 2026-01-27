@@ -115,17 +115,9 @@ class PGTADocxGenerator:
         # a way to access these streams.
         pass
 
-    def generate_docx(self, data, output_path):
+    def generate_docx(self, output_path, patient_data, embryos_data):
         """Generate DOCX report"""
         doc = Document()
-        
-        # Helper for Base64 images in DOCX
-        def add_b64_image(b64_str, width=None):
-            stream = BytesIO(base64.b64decode(b64_str))
-            if width:
-                doc.add_picture(stream, width=width)
-            else:
-                doc.add_picture(stream)
         
         # Set margins
         sections = doc.sections
@@ -159,15 +151,20 @@ class PGTADocxGenerator:
         return output_path
     
     def _setup_page_header_footer(self, doc):
-        """Setup repeating headers and footers for all sections"""
+        """Setup repeating headers and footers for all sections using Base64 assets"""
         for section in doc.sections:
             # Header
             header = section.header
             header_para = header.paragraphs[0]
             header_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            if os.path.exists(self.header_logo):
+            
+            # Use Base64 Header Logo
+            try:
+                header_stream = BytesIO(base64.b64decode(HEADER_LOGO_B64))
                 run = header_para.add_run()
-                run.add_picture(self.header_logo, width=Inches(6.5))
+                run.add_picture(header_stream, width=Inches(6.5))
+            except Exception as e:
+                print(f"Error adding Base64 header to DOCX: {e}")
 
             # Footer
             footer = section.footer
@@ -181,13 +178,16 @@ class PGTADocxGenerator:
             footer_table.columns[0].width = Inches(5.0)
             footer_table.columns[1].width = Inches(1.5)
             
-            # Add Footer Banner
-            if os.path.exists(self.footer_banner):
+            # Add Footer Banner (Base64)
+            try:
+                footer_stream = BytesIO(base64.b64decode(FOOTER_BANNER_B64))
                 para_banner = footer_table.rows[0].cells[0].paragraphs[0]
                 run_banner = para_banner.add_run()
-                run_banner.add_picture(self.footer_banner, width=Inches(5.0))
+                run_banner.add_picture(footer_stream, width=Inches(5.0))
+            except Exception as e:
+                 print(f"Error adding Base64 footer banner to DOCX: {e}")
             
-            # Add GenQA Logo
+            # Add GenQA Logo (Keep file reference if exists, it's not core branding)
             if os.path.exists(self.genqa_logo):
                 para_logo = footer_table.rows[0].cells[1].paragraphs[0]
                 para_logo.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -605,29 +605,28 @@ class PGTADocxGenerator:
         # Signature section removed from intermediate pages
 
     def _add_signature_section(self, doc):
-        """Add signature section (image preferred, fallback to table)"""
-        sig_image_path = self.signs_image
-        if os.path.exists(sig_image_path):
-            try:
-                sig_p = doc.add_paragraph()
-                sig_p.add_run("This report has been reviewed and approved by:").bold = True
-                
+        """Add signature section using Base64 assets"""
+        try:
+            sig_p = doc.add_paragraph()
+            sig_p.add_run("This report has been reviewed and approved by:").bold = True
+            
+            # Use Base64 Signature Image
+            sig_stream = BytesIO(base64.b64decode(SIGNS_IMAGE_B64))
+            doc.add_picture(sig_stream, width=Inches(5.5))
+            
+            doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            return
+        except Exception as e:
+            print(f"Error adding Base64 signature image to DOCX: {e}")
+            
+            # Fallback to file if exists
+            if os.path.exists(self.signs_image):
                 try:
-                    # Optimized width to match PDF (approx 400pt ~ 5.5 inches)
-                    doc.add_picture(sig_image_path, width=Inches(5.5))
-                except Exception:
-                    # Conversion fallback for UnrecognizedImageError
-                    with PILImage.open(sig_image_path) as img:
-                        img = img.convert("RGB")
-                        img_byte_arr = io.BytesIO()
-                        img.save(img_byte_arr, format='PNG')
-                        img_byte_arr.seek(0)
-                        doc.add_picture(img_byte_arr, width=Inches(5.5))
-                
-                doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                return
-            except Exception as e:
-                print(f"Error adding signature image to DOCX: {repr(e)}")
+                    doc.add_picture(self.signs_image, width=Inches(5.5))
+                    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    return
+                except:
+                    pass
 
         # Fallback to table
         sig_header = doc.add_paragraph("This report has been reviewed and approved by:")
