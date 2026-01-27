@@ -99,12 +99,16 @@ class PGTAReportTemplate:
         """Initialize template with asset directory"""
         # Resolve the assets directory relative to the script location
         self.ASSETS_DIR = self.get_resource_path(assets_dir)
+        print(f"DEBUG: Resolved Assets Dir: {self.ASSETS_DIR}")
         
         # Hardcode specific asset filenames to avoid manual adaptation
         self.HEADER_LOGO = os.path.join(self.ASSETS_DIR, "image_page1_0.png")
         self.FOOTER_BANNER = os.path.join(self.ASSETS_DIR, "image_page1_1.png")
         self.FOOTER_LOGO = os.path.join(self.ASSETS_DIR, "image_page1_2.png")
         self.GENQA_LOGO = os.path.join(self.ASSETS_DIR, "genqa_logo.png")
+        
+        print(f"DEBUG: Header Logo path: {self.HEADER_LOGO} (Exists: {os.path.exists(self.HEADER_LOGO)})")
+        print(f"DEBUG: Footer Banner path: {self.FOOTER_BANNER} (Exists: {os.path.exists(self.FOOTER_BANNER)})")
         
         # Create custom styles
         self.styles = getSampleStyleSheet()

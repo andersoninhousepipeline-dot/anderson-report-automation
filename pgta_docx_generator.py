@@ -71,12 +71,15 @@ class PGTADocxGenerator:
         """Initialize DOCX generator"""
         # Resolve the assets directory relative to the script location
         self.assets_dir = self.get_resource_path(assets_dir)
+        print(f"DEBUG DOCX: Assets Dir: {self.assets_dir}")
         
         self.header_logo = os.path.join(self.assets_dir, "image_page1_0.png")
         self.footer_banner = os.path.join(self.assets_dir, "image_page1_1.png")
         self.footer_logo = os.path.join(self.assets_dir, "image_page1_2.png")
         self.genqa_logo = os.path.join(self.assets_dir, "genqa_logo.png")
         self.signs_image = os.path.join(self.assets_dir, "signs.png")
+        
+        print(f"DEBUG DOCX: Logo exists: {os.path.exists(self.header_logo)}")
     
     def _set_cell_background(self, cell, fill):
         """Set background shading for a table cell"""
