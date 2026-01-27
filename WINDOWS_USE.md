@@ -29,5 +29,9 @@ If you want a single file that you can move around or give to others, you can cr
 Ensure the `assets/` folder and `pgta_styles.css` are in the same directory as the script/executable when running.
 
 ## Troubleshooting
+- **"Python was not found" error**: 
+  1. This means Python is not in your system's "PATH". 
+  2. To fix: Uninstall Python and reinstall it, but **crucially** check the box that says **"Add Python to PATH"** in the first step of the installer.
+  3. Alternatively, you can search for "Edit the system environment variables" in your start menu, click "Environment Variables", find "Path" under User Variables, and add the folder where you installed Python.
 - **Black Screen/Not Starting**: If the `.exe` doesn't start, try running `launch.bat` instead to see if any errors are printed to the console.
 - **Missing DLLs**: If you get a "PyQt6" error, ensure your Windows has the latest "Microsoft Visual C++ Redistributable" installed.
