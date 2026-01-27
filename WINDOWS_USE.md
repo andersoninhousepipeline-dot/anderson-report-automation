@@ -33,10 +33,10 @@ Ensure the `assets/` folder and `pgta_styles.css` are in the same directory as t
   1. This means Python is not in your system's "PATH". 
   2. To fix: Uninstall Python and reinstall it, but **crucially** check the box that says **"Add Python to PATH"** in the first step of the installer.
   3. Alternatively, you can search for "Edit the system environment variables" in your start menu, click "Environment Variables", find "Path" under User Variables, and add the folder where you installed Python.
-- **"PyQt6 failed to install"**: 
-  1. Open Command Prompt (type `cmd` in Start Menu).
-  2. Type: `pip install --upgrade pip`
-  3. Then type: `pip install PyQt6 --user`
-  4. If it still fails, ensure your Windows has the **Visual C++ Redistributable** installed from [Microsoft's website](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist).
+- **"PyQt6 failed to install" (Nuclear Option)**: 
+  1. Open Command Prompt as **Administrator**.
+  2. Run this "Clean Install" command:
+     `python -m pip uninstall PyQt6 PyQt6-Qt6 PyQt6-sip -y && python -m pip install PyQt6 --user --force-reinstall`
+  3. If it still fails, download and install the **Microsoft Visual C++ Redistributable** (specifically the X64 version) from [here](https://aka.ms/vs/17/release/vc_redist.x64.exe).
 - **Black Screen/Not Starting**: If the `.exe` doesn't start, try running `launch.bat` instead to see if any errors are printed to the console.
 - **Missing DLLs**: If you get a "PyQt6" error, ensure your Windows has the latest "Microsoft Visual C++ Redistributable" installed.
