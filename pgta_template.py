@@ -755,8 +755,10 @@ class PGTAReportTemplate:
         # Signatures - use Base64 by default for foolproof rendering
         try:
             img_data = base64.b64decode(SIGNS_IMAGE_B64)
-            img = Image(BytesIO(img_data), width=380, height=60)
-            img.hAlign = 'LEFT'
+            img_w = 395
+            img_h = 42
+            img = Image(BytesIO(img_data), width=img_w, height=img_h)
+            img.hAlign = 'CENTER'
             elements.append(img)
         except Exception as e:
             print(f"Error drawing Base64 signatures: {e}")
