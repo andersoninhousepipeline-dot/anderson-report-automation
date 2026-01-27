@@ -40,10 +40,20 @@ echo Checking dependencies...
 %PYTHON_CMD% -c "import reportlab, docx, PyQt6, pandas, openpyxl, PIL, pdfplumber, PyPDF2" >nul 2>&1
 if %errorlevel% neq 0 (
     echo Missing dependencies detected!
+    echo Upgrading pip...
+    %PYTHON_CMD% -m pip install --upgrade pip
+    
     echo Installing required packages...
     %PYTHON_CMD% -m pip install -r requirements_app.txt
+    
     if %errorlevel% neq 0 (
+        echo.
         echo Error: Failed to install dependencies.
+        echo This often happens when PyQt6 cannot be installed.
+        echo.
+        echo TRY THIS MANUALLY: 
+        echo Open Command Prompt and type: %PYTHON_CMD% -m pip install PyQt6 --user
+        echo.
         pause
         exit /b
     )
