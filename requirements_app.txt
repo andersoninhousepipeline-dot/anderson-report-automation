@@ -1,7 +1,6 @@
 reportlab>=4.0.0
 python-docx>=1.1.0
 PyQt6>=6.6.0
-PyQt6-Pdf>=6.6.0
 pandas>=2.0.0
 openpyxl>=3.1.0
 Pillow>=10.0.0
