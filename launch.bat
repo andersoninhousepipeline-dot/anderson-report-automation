@@ -37,8 +37,10 @@ echo Using Python command: %PYTHON_CMD%
 
 :: Check dependencies
 echo Checking dependencies...
-%PYTHON_CMD% -c "import reportlab, docx, PyQt6, pandas, openpyxl, PIL, pdfplumber, PyPDF2" >nul 2>&1
+%PYTHON_CMD% -c "import reportlab, docx, PyQt6, pandas, openpyxl, PIL, pdfplumber, PyPDF2" 2>import_error.log
 if %errorlevel% neq 0 (
+    type import_error.log
+    echo.
     echo Missing dependencies detected!
     echo Upgrading pip...
     %PYTHON_CMD% -m pip install --upgrade pip
@@ -73,7 +75,17 @@ if %errorlevel% neq 0 (
 echo.
 echo Starting PGT-A Report Generator...
 echo.
-%PYTHON_CMD% pgta_report_generator.py
+%PYTHON_CMD% pgta_report_generator.py 2>run_error.log
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERROR] The application failed to start.
+    echo Detailed error:
+    type run_error.log
+    echo.
+    echo Tip: If you see "ImportError: DLL load failed", please install:
+    echo https://aka.ms/vs/17/release/vc_redist.x64.exe
+    echo.
+)
 
 echo.
 echo Application closed.
