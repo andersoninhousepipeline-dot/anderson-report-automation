@@ -61,16 +61,7 @@ if %errorlevel% neq 0 (
     )
 )
 
-:: Check for wkhtmltopdf
-where wkhtmltopdf >nul 2>&1
-if %errorlevel% neq 0 (
-    echo.
-    echo [WARNING] wkhtmltopdf not found in PATH!
-    echo PDF generation will not work without it.
-    echo Please download and install it from: https://wkhtmltopdf.org/downloads.html
-    echo After installing, make sure to add the 'bin' folder to your System PATH.
-    echo.
-)
+
 
 echo.
 echo Starting PGT-A Report Generator...
