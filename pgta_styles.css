@@ -1,0 +1,210 @@
+@page {
+    size: letter;
+    margin: 60pt 58pt; /* MARGIN_TOP/BOTTOM 60pt, MARGIN_LEFT/RIGHT 58pt */
+    @top-center {
+        content: element(header);
+    }
+    @bottom-center {
+        content: element(footer);
+    }
+}
+
+body {
+    font-family: 'Calibri', sans-serif;
+    color: black;
+    margin: 0;
+    padding: 0;
+    font-size: 11pt;
+}
+
+/* Header & Footer */
+header {
+    position: running(header);
+    width: 100%;
+    margin-top: -45pt;
+    text-align: center;
+}
+
+.header-banner {
+    width: 468pt;
+    height: auto;
+}
+
+footer {
+    position: running(footer);
+    width: 100%;
+    margin-bottom: -50pt;
+}
+
+.footer-banner {
+    width: 468pt;
+    height: auto;
+    position: absolute;
+    bottom: 0.4pt;
+    left: 14pt; /* Relative to margin-left 58pt -> 72pt total */
+}
+
+.genqa-logo {
+    position: absolute;
+    bottom: 35pt;
+    right: 42pt; /* Positioned to match x=454 */
+    width: 67pt;
+    height: auto;
+}
+
+/* Typography styles */
+.report-title {
+    font-family: 'Gill Sans MT Bold', 'Gill Sans MT', sans-serif;
+    font-weight: bold;
+    font-size: 16pt;
+    color: #1F497D;
+    text-align: center;
+    margin-bottom: 20pt;
+}
+
+.section-header {
+    font-family: 'Segoe UI Bold', 'Segoe UI', sans-serif;
+    font-weight: bold;
+    font-size: 11pt;
+    color: #1F497D;
+    margin-top: 15pt;
+    margin-bottom: 4pt;
+    padding-bottom: 4pt;
+    border-bottom: 0.5pt solid #989998;
+}
+
+.cnv-chart-header {
+    border-bottom: none; /* Special case: no line under COPY NUMBER CHART */
+}
+
+.embryo-id-label {
+    font-family: 'Gill Sans MT Bold', sans-serif;
+    font-size: 12pt;
+    color: #1F497D;
+    margin-top: 12pt;
+    margin-bottom: 8pt;
+}
+
+/* Tables */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 12pt;
+}
+
+.patient-info-table {
+    background-color: #F1F1F7;
+    font-family: 'Segoe UI Bold', sans-serif;
+    font-weight: bold;
+    font-size: 10pt;
+}
+
+.patient-info-table td {
+    padding: 2pt 5pt;
+    vertical-align: top;
+}
+
+.pndt-disclaimer {
+    background-color: #F2F2F2;
+    padding: 6pt;
+    margin-bottom: 12pt;
+}
+
+.pndt-text {
+    font-family: 'Segoe UI Bold', sans-serif;
+    font-weight: bold;
+    font-size: 9.5pt;
+    text-align: center;
+    margin: 0;
+}
+
+.summary-table {
+    font-size: 9pt;
+}
+
+.summary-table th {
+    background-color: #F9BE8F;
+    font-family: 'Calibri Bold', sans-serif;
+    padding: 5pt;
+    border: 0.5pt solid grey;
+}
+
+.summary-table td {
+    background-color: #F1F1F7;
+    padding: 5pt;
+    border: 0.5pt solid grey;
+    text-align: center;
+}
+
+/* Results table weights */
+.res-bold { font-weight: bold; }
+.res-red { color: #EE0000; }
+.res-blue { color: #0070C0; }
+
+.detail-table {
+    background-color: #F1F1F7;
+    padding: 3pt 10pt;
+}
+
+.detail-table td {
+    padding: 3pt 10pt;
+}
+
+/* CNV Status Table - Exact user request: 
+   All grey bg (#F1F1F7), Bold chars, White grid lines */
+.cnv-status-table {
+    font-family: 'Segoe UI Bold', sans-serif;
+    font-weight: bold;
+    font-size: 8pt;
+}
+
+.cnv-status-table td, .cnv-status-table th {
+    background-color: #F1F1F7;
+    color: black;
+    border: 1pt solid white;
+    text-align: center;
+    padding: 3pt 2pt;
+}
+
+.legend-text {
+    font-size: 8pt;
+    font-style: italic;
+    margin-top: 6pt;
+}
+
+/* Signatures */
+.approval-line {
+    font-family: 'Segoe UI Bold', sans-serif;
+    font-weight: bold;
+    font-size: 12.48pt;
+    color: #4F81BD;
+    margin-top: 15pt;
+    margin-bottom: 12.7pt;
+}
+
+.signature-block {
+    text-align: center;
+    page-break-inside: avoid;
+}
+
+.sig-image {
+    width: 395pt;
+    height: 42pt;
+}
+
+.sig-info-table td {
+    width: 33%;
+    text-align: center;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 11.04pt;
+    padding-top: 1pt;
+}
+
+/* Utils */
+.page-break {
+    page-break-after: always;
+}
+
+.keep-together {
+    page-break-inside: avoid;
+}

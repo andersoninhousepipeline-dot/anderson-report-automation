@@ -1,0 +1,30 @@
+
+Table Section
+
+Patient name
+PIN
+Date of Birth/ Age
+Sample Number
+Referring Clinician
+Biopsy date
+Hospital/Clinic
+Sample collection date :
+Specimen
+Sample receipt date
+Biopsy performed by
+Report date
+
+Results Summary Section
+
+S. No. Sample Result MTcopy Interpretation
+
+Embryo Results Section
+
+Embryo 
+Result:
+Autosomes:
+Sex chromosomes:
+Interpretation:
+MTcopy:
+
+
