@@ -43,7 +43,6 @@ import pandas as pd
 # Add templates directory to path to import modular generators (currently only PGT-A)
 # We will keep the structure but use ReportLab classes
 from pgta_template import PGTAReportTemplate
-from pgta_template import PGTAReportTemplate
 from pgta_docx_generator import PGTADocxGenerator
 
 class PreviewWorker(QThread):

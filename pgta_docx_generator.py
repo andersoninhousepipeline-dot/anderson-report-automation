@@ -10,6 +10,9 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import os
 import sys
+import base64
+from io import BytesIO
+from pgta_assets import HEADER_LOGO_B64, FOOTER_BANNER_B64, SIGNS_IMAGE_B64
 import io
 from PIL import Image as PILImage
 
@@ -99,9 +102,30 @@ class PGTADocxGenerator:
         shading_elm.set(qn('w:fill'), fill)
         cell._tc.get_or_add_tcPr().append(shading_elm)
     
-    def generate_docx(self, output_path, patient_data, embryos_data):
+    def _add_branding(self, doc):
+        """Add all branding elements using Base64 where possible"""
+        # Save Base64 to temp files for docx to load them
+        # (docx Image function requires a path or file-like object that behaves like one)
+        
+        def get_b64_as_stream(b64_str):
+            return BytesIO(base64.b64decode(b64_str))
+
+        # We can't easily add headers/footers to all sections in a generic way here 
+        # without complex docx logic, but let's at least ensure we provide 
+        # a way to access these streams.
+        pass
+
+    def generate_docx(self, data, output_path):
         """Generate DOCX report"""
         doc = Document()
+        
+        # Helper for Base64 images in DOCX
+        def add_b64_image(b64_str, width=None):
+            stream = BytesIO(base64.b64decode(b64_str))
+            if width:
+                doc.add_picture(stream, width=width)
+            else:
+                doc.add_picture(stream)
         
         # Set margins
         sections = doc.sections

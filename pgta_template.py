@@ -16,7 +16,10 @@ from reportlab.pdfgen import canvas
 from PIL import Image as PILImage
 import os
 import sys
+import base64
+from io import BytesIO
 from datetime import datetime
+from pgta_assets import HEADER_LOGO_B64, FOOTER_BANNER_B64, SIGNS_IMAGE_B64
 
 
 class PGTAReportTemplate:
@@ -88,22 +91,13 @@ class PGTAReportTemplate:
     @staticmethod
     def get_resource_path(relative_path):
         """ Get absolute path to resource, works for dev and for PyInstaller """
-        # Try PyInstaller path
         if hasattr(sys, '_MEIPASS'):
-            return os.path.join(sys._MEIPASS, relative_path)
+            base_path = sys._MEIPASS
+        else:
+            base_path = os.path.dirname(os.path.abspath(__file__))
             
-        # Try relative to script
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        path1 = os.path.join(script_dir, relative_path)
-        if os.path.exists(path1):
-            return path1
-            
-        # Try relative to CWD
-        path2 = os.path.join(os.getcwd(), relative_path)
-        if os.path.exists(path2):
-            return path2
-            
-        return path1 # Fallback to path1 even if not exists for error reporting
+        # Join and then use abspath to normalize the path (fix slash direction etc)
+        return os.path.abspath(os.path.join(base_path, relative_path))
 
     def __init__(self, assets_dir="assets/pgta"):
         """Initialize template with asset directory"""
@@ -111,18 +105,19 @@ class PGTAReportTemplate:
         self.ASSETS_DIR = self.get_resource_path(assets_dir)
         print(f"INFO: Assets Directory resolved to: {self.ASSETS_DIR}")
         
-        # Hardcode specific asset filenames to avoid manual adaptation
+        # Hardcode specific asset filenames
         self.HEADER_LOGO = os.path.join(self.ASSETS_DIR, "image_page1_0.png")
         self.FOOTER_BANNER = os.path.join(self.ASSETS_DIR, "image_page1_1.png")
         self.FOOTER_LOGO = os.path.join(self.ASSETS_DIR, "image_page1_2.png")
         self.GENQA_LOGO = os.path.join(self.ASSETS_DIR, "genqa_logo.png")
+        self.SIGNS_IMAGE = os.path.join(self.ASSETS_DIR, "signs.png")
         
-        # Confirm critical assets exist
-        for label, path in [("HeaderLogo", self.HEADER_LOGO), ("FooterBanner", self.FOOTER_BANNER)]:
+        # Verify critical assets
+        for label, path in [("Header", self.HEADER_LOGO), ("Footer", self.FOOTER_BANNER), ("Signs", self.SIGNS_IMAGE)]:
             if not os.path.exists(path):
-                print(f"CRITICAL WARNING: Asset not found: {label} at {path}")
+                print(f"CRITICAL: {label} missing at {path}")
             else:
-                print(f"SUCCESS: Found asset: {label}")
+                print(f"FOUND: {label} ({os.path.getsize(path)} bytes)")
         
         # Create custom styles
         self.styles = getSampleStyleSheet()
@@ -318,29 +313,31 @@ class PGTAReportTemplate:
         return output_path
     
     def _add_header_footer(self, canvas, doc):
-        """Add header and footer to each page"""
+        """Add header and footer to each page using Base64 assets for robustness"""
         canvas.saveState()
         
-        # Helper to draw using PIL for better compatibility
-        def draw_img_safe(path, x, y, w, h):
-            if os.path.exists(path):
-                try:
-                    # Drawing PIL images in reportlab is more robust
-                    with PILImage.open(path) as img:
-                        canvas.drawInlineImage(img, x, y, width=w, height=h, preserveAspectRatio=True)
-                        return True
-                except Exception as e:
-                    print(f"Error drawing image {path}: {e}")
-            return False
+        def draw_b64_img(b64_str, x, y, w, h):
+            try:
+                img_data = base64.b64decode(b64_str)
+                img = PILImage.open(BytesIO(img_data))
+                canvas.drawInlineImage(img, x, y, width=w, height=h, preserveAspectRatio=True)
+                return True
+            except Exception as e:
+                print(f"Error drawing Base64 image: {e}")
+                return False
 
-        # Add header logo
-        draw_img_safe(self.HEADER_LOGO, 72, 720, 468, 72)
+        # Draw Header Logo (Base64)
+        draw_b64_img(HEADER_LOGO_B64, 72, 720, 468, 72)
         
-        # Add footer banner
-        draw_img_safe(self.FOOTER_BANNER, 72, 0.4, 468, 66)
+        # Draw Footer Banner (Base64)
+        draw_b64_img(FOOTER_BANNER_B64, 72, 0.4, 468, 66)
         
-        # Add small GenQA logo
-        draw_img_safe(self.GENQA_LOGO, 454, 35, 67, 36)
+        # Draw GenQA Logo (Small - keep file reference as it's secondary)
+        if os.path.exists(self.GENQA_LOGO):
+             try:
+                 canvas.drawImage(self.GENQA_LOGO, 454, 35, width=67, height=36, preserveAspectRatio=True, mask='auto')
+             except:
+                 pass
         
         canvas.restoreState()
     
@@ -755,17 +752,22 @@ class PGTAReportTemplate:
         # Exact source vertical gap (12.7pt from text baseline to image top)
         elements.append(Spacer(1, 12.7))
         
-        # Signatures image: exact source dimensions (395pt x 42pt)
-        sig_image_path = os.path.join(self.ASSETS_DIR, "signs.png")
-        if os.path.exists(sig_image_path):
-            try:
-                img_w = 395
-                img_h = 42
-                img = Image(sig_image_path, width=img_w, height=img_h)
-                img.hAlign = 'CENTER'
-                elements.append(img)
-            except Exception:
-                pass
+        # Signatures - use Base64 by default for foolproof rendering
+        try:
+            img_data = base64.b64decode(SIGNS_IMAGE_B64)
+            img = Image(BytesIO(img_data), width=380, height=60)
+            img.hAlign = 'LEFT'
+            elements.append(img)
+        except Exception as e:
+            print(f"Error drawing Base64 signatures: {e}")
+            # Fallback to file if somehow Base64 fails
+            if 'signs_image_path' in data and data['signs_image_path'] and os.path.exists(data['signs_image_path']):
+                try:
+                    img = Image(data['signs_image_path'], width=380, height=60)
+                    img.hAlign = 'LEFT'
+                    elements.append(img)
+                except:
+                    pass
 
         # Names and Titles below signatures - Using SegoeUI Normal weight as in source
         # Source Centers: 152.1, 307.7, 463.1 (Page Center approx 306)
