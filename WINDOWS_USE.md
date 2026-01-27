@@ -25,12 +25,7 @@ If you want a single file that you can move around or give to others, you can cr
 
 ## Vital Requirements for Both Options
 
-### 1. wkhtmltopdf (Required for PDF generation)
-The tool uses `pdfkit` which requires `wkhtmltopdf` to be installed on the Windows system.
-- Download the Windows installer from [wkhtmltopdf.org](https://wkhtmltopdf.org/downloads.html).
-- After installing, add the `bin` folder (usually `C:\Program Files\wkhtmltopdf\bin`) to your **System PATH**.
-
-### 2. Assets
+### 1. Assets
 Ensure the `assets/` folder and `pgta_styles.css` are in the same directory as the script/executable when running.
 
 ## Troubleshooting
