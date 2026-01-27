@@ -16,7 +16,7 @@ if %errorlevel% neq 0 (
 
 :: Check dependencies
 echo Checking dependencies...
-python -c "import reportlab, docx, PyQt6, pandas, openpyxl, PIL, pdfplumber" >nul 2>&1
+python -c "import reportlab, docx, PyQt6, pandas, openpyxl, PIL, pdfplumber, PyPDF2" >nul 2>&1
 if %errorlevel% neq 0 (
     echo Missing dependencies detected!
     echo Installing required packages...
