@@ -19,7 +19,7 @@ echo "Python version: $PYTHON_VERSION"
 
 # Check if dependencies are installed
 echo "Checking dependencies..."
-python3 -c "import reportlab, docx, PyQt6, pandas, openpyxl, PIL, pdfplumber" 2>/dev/null
+python3 -c "import reportlab, docx, PyQt6, pandas, openpyxl, PIL, pdfplumber, PyPDF2, pdfkit" 2>/dev/null
 
 if [ $? -ne 0 ]; then
     echo ""

@@ -27,21 +27,35 @@ A professional desktop application that generates PDF and DOCX reports for Preim
 
 ---
 
-## 🚀 Installation
+## 🚀 Quick Start
+
+### For Linux Users
+1. **Grant execution permission**:
+   ```bash
+   chmod +x launch.sh
+   ```
+2. **Run the application**:
+   ```bash
+   ./launch.sh
+   ```
+
+### For Windows Users
+1. **Install Python**: Download from [python.org](https://www.python.org/) (Check "Add to PATH").
+2. **Launch**: Double-click **`launch.bat`**.
+
+---
+
+## 🛠️ Detailed Installation (Manual)
 
 ### Step 1: Install Python Dependencies
-
 ```bash
 pip install -r requirements_app.txt
 ```
 
-### Step 2: Verify Installation
-
+### Step 2: Run the App
 ```bash
 python pgta_report_generator.py
 ```
-
-The application window should open.
 
 ---
 
