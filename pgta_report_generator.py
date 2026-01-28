@@ -27,7 +27,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QMessageBox, QProgressBar,
     QGroupBox, QFormLayout, QScrollArea, QCheckBox, QSpinBox,
     QComboBox, QListWidget, QListWidgetItem, QStyle, QGridLayout,
-    QSplitter, QTextBrowser, QRadioButton
+    QSplitter, QTextBrowser, QRadioButton, QDialog, QDialogButtonBox
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings, QTimer
 from PyQt6.QtGui import QPixmap, QIcon
@@ -160,7 +160,7 @@ class PGTAReportGeneratorApp(QMainWindow):
         self.init_ui()
         self.load_settings()
     
-    # ... (skipping some methods) ...
+        # ... (skipping some methods) ...
 
     def update_data_summary(self):
         """Update data summary display"""
@@ -245,6 +245,11 @@ class PGTAReportGeneratorApp(QMainWindow):
         self.setWindowTitle("ADVAT Report Generator")
         self.setGeometry(100, 100, 1200, 800)
         
+        # Set Application Icon
+        icon_path = resource_path(os.path.join("assets", "pgta", "app_icon.png"))
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+        
         # Central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -280,8 +285,7 @@ class PGTAReportGeneratorApp(QMainWindow):
         # Create tabs
         self.manual_entry_tab = self.create_manual_entry_tab()
         self.bulk_upload_tab = self.create_bulk_upload_tab()
-        self.image_management_tab = self.create_image_management_tab()
-        self.generate_tab = self.create_generate_tab()
+        self.user_guide_tab = self.create_user_guide_tab()
         
         self.tabs.addTab(self.manual_entry_tab, "Manual Entry")
         self.tabs.setTabIcon(0, self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
@@ -289,11 +293,8 @@ class PGTAReportGeneratorApp(QMainWindow):
         self.tabs.addTab(self.bulk_upload_tab, "Bulk Upload")
         self.tabs.setTabIcon(1, self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogListView))
         
-        self.tabs.addTab(self.image_management_tab, "Image Management")
-        self.tabs.setTabIcon(2, self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon))
-        
-        self.tabs.addTab(self.generate_tab, "Generate Reports")
-        self.tabs.setTabIcon(3, self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon))
+        self.tabs.addTab(self.user_guide_tab, "User Guide")
+        self.tabs.setTabIcon(2, self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation))
         
         # Status bar
         self.statusBar().showMessage("Ready")
@@ -445,6 +446,57 @@ class PGTAReportGeneratorApp(QMainWindow):
         button_layout.addWidget(clear_btn)
         button_layout.addStretch()
         layout.addLayout(button_layout)
+        
+        # --- NEW: Report Generation Tools ---
+        gen_group = QGroupBox("Fast Report Generation")
+        gen_layout = QVBoxLayout()
+        gen_group.setLayout(gen_layout)
+        
+        # Output directory selection
+        out_row = QHBoxLayout()
+        self.output_dir_label = QLabel("No directory selected")
+        self.output_dir_label.setStyleSheet("padding: 5px; border: 1px solid #ccc; background: white;")
+        browse_out_btn = QPushButton("Select Output Folder")
+        browse_out_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton))
+        browse_out_btn.clicked.connect(self.browse_output_dir)
+        out_row.addWidget(self.output_dir_label, 1)
+        out_row.addWidget(browse_out_btn)
+        gen_layout.addLayout(out_row)
+        
+        # Formats and Generate Button
+        action_row = QHBoxLayout()
+        self.generate_pdf_check = QCheckBox("PDF")
+        self.generate_pdf_check.setChecked(True)
+        self.generate_docx_check = QCheckBox("DOCX")
+        self.generate_docx_check.setChecked(True)
+        
+        self.generate_btn = QPushButton("Generate Report(s)")
+        self.generate_btn.setStyleSheet("background-color: #1F497D; color: white; font-weight: bold; padding: 8px;")
+        self.generate_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
+        self.generate_btn.clicked.connect(self.generate_reports)
+        
+        action_row.addWidget(QLabel("Output Forms:"))
+        action_row.addWidget(self.generate_pdf_check)
+        action_row.addWidget(self.generate_docx_check)
+        action_row.addStretch()
+        action_row.addWidget(self.generate_btn)
+        gen_layout.addLayout(action_row)
+        
+        # Progress Bar inside Manual Tab
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_label = QLabel("")
+        self.progress_label.setVisible(False)
+        
+        # Restore data summary label to fix crash
+        self.data_summary_label = QLabel("No data loaded")
+        self.data_summary_label.setStyleSheet("padding: 5px; color: #666; font-style: italic;")
+        
+        gen_layout.addWidget(self.progress_label)
+        gen_layout.addWidget(self.progress_bar)
+        gen_layout.addWidget(self.data_summary_label)
+        
+        layout.addWidget(gen_group)
         
         splitter.addWidget(left_widget)
         
@@ -696,13 +748,13 @@ class PGTAReportGeneratorApp(QMainWindow):
         img_layout.addWidget(img_path_label)
         img_layout.addStretch()
         form.addRow("CNV Chart:", img_layout)
-        
+    
         # Chromosome status section using Grid
         chr_group = QGroupBox("Chromosome Details")
         chr_grid = QGridLayout()
         chr_group.setLayout(chr_grid)
         form.addRow(chr_group)
-        
+    
         # Headers
         chr_grid.addWidget(QLabel("<b>Chr</b>"), 0, 0)
         chr_grid.addWidget(QLabel("<b>Status</b>"), 0, 1)
@@ -711,9 +763,9 @@ class PGTAReportGeneratorApp(QMainWindow):
         chr_grid.addWidget(QLabel("<b>Chr</b>"), 0, 4)
         chr_grid.addWidget(QLabel("<b>Status</b>"), 0, 5)
         chr_grid.addWidget(QLabel("<b>Mosaic %</b>"), 0, 6)
-        
+    
         chr_inputs = {}
-        
+    
         for i in range(1, 23):
             # Determine column (Left: 1-11, Right: 12-22)
             if i <= 11:
@@ -740,7 +792,7 @@ class PGTAReportGeneratorApp(QMainWindow):
             chr_grid.addWidget(mos_input, row, col_base + 2)
             
             chr_inputs[str(i)] = {'status': chr_combo, 'mosaic': mos_input}
-        
+    
         return {
             'group': group,
             'result_description': result_description,
@@ -751,160 +803,264 @@ class PGTAReportGeneratorApp(QMainWindow):
         }
     
     def create_bulk_upload_tab(self):
-        """Create bulk upload tab"""
+        """Create standalone bulk upload tab with batch editing"""
         tab = QWidget()
-        layout = QVBoxLayout()
-        tab.setLayout(layout)
-        
-        # Instructions
-        instructions = QLabel(
-            "Upload an Excel or TSV file with patient and embryo data.\n"
-            "The file should contain columns for all patient information and embryo details."
-        )
-        instructions.setWordWrap(True)
-        instructions.setStyleSheet("padding: 10px; background-color: #E3F2FD; border-radius: 5px;")
-        layout.addWidget(instructions)
+        main_layout = QVBoxLayout()
+        tab.setLayout(main_layout)
         
         # File selection
-        file_layout = QHBoxLayout()
+        file_group = QGroupBox("1. Select Excel File")
+        file_layout = QVBoxLayout()
+        file_group.setLayout(file_layout)
+        
+        file_row = QHBoxLayout()
         self.bulk_file_label = QLabel("No file selected")
-        self.bulk_file_label.setStyleSheet("padding: 5px; border: 1px solid #ccc;")
-        file_layout.addWidget(self.bulk_file_label, 1)
+        file_row.addWidget(QLabel("File:"))
+        file_row.addWidget(self.bulk_file_label, 1)
         
         browse_btn = QPushButton("Browse")
-        browse_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton))
-        browse_btn.clicked.connect(self.browse_bulk_file)
-        file_layout.addWidget(browse_btn)
+        browse_btn.clicked.connect(self.browse_and_parse_bulk_file)
+        file_row.addWidget(browse_btn)
+        file_layout.addLayout(file_row)
         
-        download_template_btn = QPushButton("Download Template")
-        download_template_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
-        download_template_btn.clicked.connect(self.download_template)
-        file_layout.addWidget(download_template_btn)
+        main_layout.addWidget(file_group)
         
-        layout.addLayout(file_layout)
+        # Output folder selection
+        output_group = QGroupBox("2. Select Output Folder")
+        output_layout = QHBoxLayout()
+        output_group.setLayout(output_layout)
         
-        # Preview table
-        preview_label = QLabel("Data Preview:")
-        preview_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
-        layout.addWidget(preview_label)
+        self.bulk_output_label = QLabel("No folder selected")
+        output_layout.addWidget(QLabel("Folder:"))
+        output_layout.addWidget(self.bulk_output_label, 1)
         
-        self.bulk_preview_table = QTableWidget()
-        layout.addWidget(self.bulk_preview_table)
+        output_browse_btn = QPushButton("Browse")
+        output_browse_btn.clicked.connect(self.browse_bulk_output_folder)
+        output_layout.addWidget(output_browse_btn)
         
-        # Load button
-        load_btn = QPushButton("Load Data")
-        load_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton))
-        load_btn.clicked.connect(self.load_bulk_data)
-        layout.addWidget(load_btn)
+        main_layout.addWidget(output_group)
+        
+        # Batch list and editor
+        content_group = QGroupBox("3. Review and Edit Patients")
+        content_layout = QHBoxLayout()
+        content_group.setLayout(content_layout)
+        
+        # LEFT: Patient list
+        left_panel = QWidget()
+        left_layout = QVBoxLayout()
+        left_panel.setLayout(left_layout)
+        
+        left_layout.addWidget(QLabel("Patients:"))
+        self.batch_list_widget = QListWidget()
+        self.batch_list_widget.currentItemChanged.connect(self.on_batch_selection_changed)
+        left_layout.addWidget(self.batch_list_widget)
+        
+        # Draft buttons
+        draft_layout = QHBoxLayout()
+        save_all_draft_btn = QPushButton("Save All Draft")
+        save_all_draft_btn.clicked.connect(self.save_bulk_draft)
+        load_draft_btn = QPushButton("Load Draft")
+        load_draft_btn.clicked.connect(self.load_bulk_draft)
+        draft_layout.addWidget(save_all_draft_btn)
+        draft_layout.addWidget(load_draft_btn)
+        left_layout.addLayout(draft_layout)
+        
+        generate_all_btn = QPushButton("Generate All Reports")
+        generate_all_btn.clicked.connect(self.generate_all_batch_reports)
+        left_layout.addWidget(generate_all_btn)
+        
+        content_layout.addWidget(left_panel)
+        
+        # RIGHT Panel: Layout for Editor and Preview
+        right_panel = QWidget()
+        right_layout = QHBoxLayout() # Horizontal to hold Splitter
+        right_panel.setLayout(right_layout)
+        
+        # Splitter between Editor and Preview
+        self.bulk_editor_splitter = QSplitter(Qt.Orientation.Horizontal)
+        right_layout.addWidget(self.bulk_editor_splitter)
+        
+        # --- Editor Side (Left of Right Panel) ---
+        editor_widget = QWidget()
+        editor_layout = QVBoxLayout()
+        editor_widget.setLayout(editor_layout)
+        
+        editor_layout.addWidget(QLabel("Patient Editor:"))
+        
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        editor_container = QWidget()
+        self.batch_editor_layout = QVBoxLayout()
+        editor_container.setLayout(self.batch_editor_layout)
+        scroll.setWidget(editor_container)
+        editor_layout.addWidget(scroll)
+        
+        self.batch_editor_placeholder = QLabel("Select a patient from the list")
+        self.batch_editor_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.batch_editor_layout.addWidget(self.batch_editor_placeholder)
+        
+        self.bulk_editor_splitter.addWidget(editor_widget)
+        
+        # --- Preview Side (Right of Right Panel) ---
+        preview_group = QGroupBox("Batch Report Preview")
+        preview_layout = QVBoxLayout()
+        preview_group.setLayout(preview_layout)
+        
+        if QPdfView and QPdfDocument:
+            self.batch_pdf_document = QPdfDocument(self)
+            self.batch_pdf_view = QPdfView(self)
+            self.batch_pdf_view.setDocument(self.batch_pdf_document)
+            self.batch_pdf_view.setPageMode(QPdfView.PageMode.MultiPage)
+            preview_layout.addWidget(self.batch_pdf_view)
+        else:
+            self.batch_pdf_view = QLabel("PDF Preview not available")
+            self.batch_pdf_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            preview_layout.addWidget(self.batch_pdf_view)
+            
+        refresh_batch_btn = QPushButton("Refresh Preview")
+        refresh_batch_btn.clicked.connect(self.update_batch_preview)
+        preview_layout.addWidget(refresh_batch_btn)
+        
+        self.bulk_editor_splitter.addWidget(preview_group)
+        self.bulk_editor_splitter.setSizes([500, 500])
+        
+        content_layout.addWidget(right_panel)
+        content_layout.setStretch(0, 1)
+        content_layout.setStretch(1, 4) # Give more space to editor/preview
+        
+        main_layout.addWidget(content_group)
         
         return tab
     
-    def create_image_management_tab(self):
-        """Create image management tab"""
+    def create_user_guide_tab(self):
+        """Create a helpful, premium user guide tab"""
         tab = QWidget()
         layout = QVBoxLayout()
         tab.setLayout(layout)
         
-        instructions = QLabel(
-            "Upload CNV chart images and assign them to specific embryos.\n"
-            "Each image must be tagged with an Embryo ID (e.g., PS1, PS2, PS4, PS9).\n"
-            "Images should be in PNG, JPG, or JPEG format."
-        )
-        instructions.setWordWrap(True)
-        instructions.setStyleSheet("padding: 10px; background-color: #FFF3E0; border-radius: 5px;")
-        layout.addWidget(instructions)
+        guide = QTextBrowser()
+        guide.setOpenExternalLinks(True)
         
-        # Image table with embryo ID assignment
-        table_label = QLabel("CNV Chart Images:")
-        table_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
-        layout.addWidget(table_label)
+        # Premium CSS for the guide
+        styles = """
+        <style>
+            body { 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                line-height: 1.6; 
+                color: #333; 
+                background-color: #f8f9fa;
+                padding: 20px;
+            }
+            .container { max-width: 900px; margin: auto; }
+            .header { 
+                background-color: #1F497D; 
+                color: white; 
+                padding: 30px; 
+                border-radius: 10px; 
+                margin-bottom: 30px;
+                text-align: center;
+            }
+            .header h1 { margin: 0; font-size: 28px; }
+            .card {
+                background: white;
+                border-radius: 8px;
+                padding: 20px;
+                margin-bottom: 20px;
+                border-left: 5px solid #1F497D;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            }
+            .card h3 { 
+                color: #1F497D; 
+                margin-top: 0; 
+                border-bottom: 1px solid #eee;
+                padding-bottom: 10px;
+            }
+            .feature-list { list-style-type: none; padding-left: 0; }
+            .feature-list li { 
+                padding: 8px 0; 
+                border-bottom: 1px solid #f1f1f1;
+                display: flex;
+                align-items: flex-start;
+            }
+            .feature-list li:last-child { border-bottom: none; }
+            .icon { 
+                background: #e9ecef;
+                color: #1F497D;
+                width: 24px;
+                height: 24px;
+                border-radius: 50%;
+                display: inline-block;
+                text-align: center;
+                line-height: 24px;
+                margin-right: 12px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            .tip {
+                background-color: #e7f3ff;
+                border: 1px solid #b8daff;
+                padding: 15px;
+                border-radius: 5px;
+                color: #004085;
+                font-style: italic;
+            }
+        </style>
+        """
         
-        self.image_table = QTableWidget()
-        self.image_table.setColumnCount(4)
-        self.image_table.setHorizontalHeaderLabels(["Embryo ID", "Image Filename", "File Path", "Actions"])
-        self.image_table.setColumnWidth(0, 150)
-        self.image_table.setColumnWidth(1, 250)
-        self.image_table.setColumnWidth(2, 350)
-        self.image_table.setColumnWidth(3, 100)
-        layout.addWidget(self.image_table)
-        
-        # Buttons
-        btn_layout = QHBoxLayout()
-        add_image_btn = QPushButton("Add Image(s)")
-        add_image_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon))
-        add_image_btn.clicked.connect(self.add_images_with_embryo_id)
-        add_image_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 8px;")
-        
-        clear_images_btn = QPushButton("Clear All")
-        clear_images_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
-        clear_images_btn.clicked.connect(self.clear_all_images)
-        
-        btn_layout.addWidget(add_image_btn)
-        btn_layout.addWidget(clear_images_btn)
-        btn_layout.addStretch()
-        layout.addLayout(btn_layout)
-        
-        # Summary
-        self.image_summary_label = QLabel("No images uploaded")
-        self.image_summary_label.setStyleSheet("padding: 5px; font-style: italic;")
-        layout.addWidget(self.image_summary_label)
-        
-        return tab
-    
-    def create_generate_tab(self):
-        """Create report generation tab"""
-        tab = QWidget()
-        layout = QVBoxLayout()
-        tab.setLayout(layout)
-        
-        # Output settings
-        settings_group = QGroupBox("Output Settings")
-        settings_layout = QFormLayout()
-        settings_group.setLayout(settings_layout)
-        layout.addWidget(settings_group)
-        
-        # Output directory
-        output_dir_layout = QHBoxLayout()
-        self.output_dir_label = QLabel("No directory selected")
-        self.output_dir_label.setStyleSheet("padding: 5px; border: 1px solid #ccc;")
-        output_dir_layout.addWidget(self.output_dir_label, 1)
-        
-        browse_output_btn = QPushButton("Browse")
-        browse_output_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton))
-        browse_output_btn.clicked.connect(self.browse_output_dir)
-        output_dir_layout.addWidget(browse_output_btn)
-        
-        settings_layout.addRow("Output Directory:", output_dir_layout)
-        
-        # Format options
-        self.generate_pdf_check = QCheckBox("Generate PDF")
-        self.generate_pdf_check.setChecked(True)
-        self.generate_docx_check = QCheckBox("Generate DOCX")
-        self.generate_docx_check.setChecked(True)
-        
-        format_layout = QHBoxLayout()
-        format_layout.addWidget(self.generate_pdf_check)
-        format_layout.addWidget(self.generate_docx_check)
-        format_layout.addStretch()
-        settings_layout.addRow("Formats:", format_layout)
+        content = f"""
+        <html>
+        <head>{styles}</head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>ADVAT Report Generator Guide</h1>
+                    <p>Efficient Clinical Reporting Suite</p>
+                </div>
 
-        # Template selection
-        # Data summary
-        summary_group = QGroupBox("Data Summary")
-        summary_layout = QVBoxLayout()
-        summary_group.setLayout(summary_layout)
-        layout.addWidget(summary_group)
-        
-        self.data_summary_label = QLabel("No data loaded")
-        self.data_summary_label.setStyleSheet("padding: 10px;")
-        summary_layout.addWidget(self.data_summary_label)
-        
-        # Progress
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        layout.addWidget(self.progress_bar)
-        
-        self.progress_label = QLabel("")
+                <div class="card">
+                    <h3>1. Manual Report Entry</h3>
+                    <ul class="feature-list">
+                        <li><span class="icon">P</span> <b>Patient Information:</b> Enter clinician and hospital details. Use DD-MM-YYYY for all dates.</li>
+                        <li><span class="icon">E</span> <b>Sample Management:</b> Add multiple samples/embryos using the 'Number of Samples' selector.</li>
+                        <li><span class="icon">L</span> <b>Live View:</b> The side-by-side preview updates in real-time as you type for immediate verification.</li>
+                        <li><span class="icon">G</span> <b>Generation:</b> Set your output folder at the bottom and click 'Generate Report(s)'.</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3>2. Bulk Upload & Batch Processing</h3>
+                    <ul class="feature-list">
+                        <li><span class="icon">1</span> <b>Import:</b> Click 'Browse' to select your analysis run Excel file (requires standard 'Details' and 'summary' sheets).</li>
+                        <li><span class="icon">2</span> <b>Review:</b> Select a patient from the list to view their automatically mapped data in the editor.</li>
+                        <li><span class="icon">3</span> <b>Refine:</b> Make individual corrections in the batch editor; the live preview will follow your changes.</li>
+                        <li><span class="icon">4</span> <b>Process:</b> Use 'Generate All Reports' to export the entire batch to your chosen directory.</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3>3. Productivity Features</h3>
+                    <ul class="feature-list">
+                        <li><span class="icon">⚡</span> <b>Copy Logic:</b> Use 'Copy Last Sample' to duplicate data across multiple entries instantly.</li>
+                        <li><span class="icon">💾</span> <b>Drafts:</b> Save your current work as a JSON draft to reload and finish later.</li>
+                        <li><span class="icon">🖼️</span> <b>Image Auto-Match:</b> Place sample charts in the same folder as the Excel file for automatic bulk matching.</li>
+                        <li><span class="icon">📄</span> <b>Dual Export:</b> Generate Word (DOCX) files alongside PDFs for further manual customization.</li>
+                    </ul>
+                </div>
+
+                <div class="tip">
+                    <b>Note:</b> This software is designed to be template-agnostic and will support additional report formats in future updates.
+                </div>
+                
+                <p style="text-align: center; color: #888; margin-top: 40px; font-size: 12px;">
+                    ADVAT Clinical Reporting Suite | Technical Support Available
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+        guide.setHtml(content)
+        layout.addWidget(guide)
+        return tab
         self.progress_label.setVisible(False)
         layout.addWidget(self.progress_label)
         
@@ -1510,6 +1666,660 @@ class PGTAReportGeneratorApp(QMainWindow):
             
             QMessageBox.information(self, "Success", f"Template saved to:\n{save_path}")
     
+    def browse_bulk_output_folder(self):
+        """Browse for bulk output directory"""
+        dir_path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Output Directory for Batch Reports",
+            self.settings.value('last_bulk_output_dir', '')
+        )
+    
+        if dir_path:
+            self.bulk_output_label.setText(dir_path)
+            self.settings.setValue('last_bulk_output_dir', dir_path)
+
+    def browse_and_parse_bulk_file(self):
+        """Browse for Excel file and automatically parse it"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Analysis RUN Excel File",
+            self.settings.value('last_bulk_file_dir', ''),
+            "Excel Files (*.xlsx *.xls)"
+        )
+        
+        if not file_path:
+            return
+            
+        self.bulk_file_label.setText(file_path)
+        self.settings.setValue('last_bulk_file_dir', os.path.dirname(file_path))
+        
+        # Automatically parse the file
+        self.parse_bulk_excel(file_path)
+
+    def parse_bulk_excel(self, file_path):
+        """Parse RUN Excel file and populate batch list"""
+        try:
+            xl = pd.ExcelFile(file_path)
+            sheet_names_lower = [s.lower() for s in xl.sheet_names]
+            
+            # Find Details and summary sheets
+            details_idx = next((i for i, s in enumerate(sheet_names_lower) if s == 'details'), None)
+            summary_idx = next((i for i, s in enumerate(sheet_names_lower) if s == 'summary'), None)
+            
+            if details_idx is None or summary_idx is None:
+                QMessageBox.warning(self, "Invalid Format", 
+                    "Excel file must contain 'Details' and 'summary' sheets")
+                return
+            
+            # Read sheets
+            df_details = pd.read_excel(file_path, sheet_name=xl.sheet_names[details_idx])
+            
+            # Find the header row in summary sheet by searching for 'Sample name'
+            df_summary_full = pd.read_excel(file_path, sheet_name=xl.sheet_names[summary_idx], header=None)
+            header_row_idx = 0
+            for r_idx, row in df_summary_full.iterrows():
+                if any('sample name' in str(val).lower() for val in row.values):
+                    header_row_idx = r_idx
+                    break
+            
+            df_summary = pd.read_excel(file_path, sheet_name=xl.sheet_names[summary_idx], header=header_row_idx)
+            
+            # Clean columns
+            df_details.columns = [str(c).strip() for c in df_details.columns]
+            df_summary.columns = [str(c).strip() for c in df_summary.columns]
+            
+            # Parse and group data
+            self.bulk_patient_data_list = []
+            file_dir = os.path.dirname(file_path)
+            
+            for _, p_row in df_details.iterrows():
+                p_name = str(p_row.get('Patient Name', '')).strip()
+                if not p_name or p_name.lower() == 'nan':
+                    continue
+                
+                # Extract patient info
+                b_date = ""
+                if 'Date of Biopsy' in p_row and pd.notnull(p_row['Date of Biopsy']):
+                    b_date = str(p_row['Date of Biopsy']).split(' ')[0]
+                
+                patient_info = {
+                    'patient_name': p_name,
+                    'spouse_name': '',
+                    'pin': str(p_row.get('Sample ID', '')),
+                    'age': '',
+                    'sample_number': str(p_row.get('Sample ID', '')),
+                    'referring_clinician': str(p_row.get('EMBRYOLOGIST NAME', '')),
+                    'biopsy_date': b_date,
+                    'hospital_clinic': str(p_row.get('Center name', '')),
+                    'sample_collection_date': b_date,
+                    'specimen': 'Day 6 Trophectoderm Biopsy',
+                    'sample_receipt_date': str(p_row.get('Date Sample Received', '')).split(' ')[0] if pd.notnull(p_row.get('Date Sample Received')) else '',
+                    'biopsy_performed_by': str(p_row.get('EMBRYOLOGIST NAME', '')),
+                    'report_date': datetime.now().strftime("%d-%m-%Y"),
+                    'indication': str(p_row.get('Remarks', '')) if pd.notnull(p_row.get('Remarks')) else ""
+                }
+                
+                # Find matching embryos
+                norm_p_name = p_name.replace(' ', '').upper()
+                embryos = []
+                
+                for _, s_row in df_summary.iterrows():
+                    sample_orig = str(s_row.get('Sample name', ''))
+                    sample_name = sample_orig.upper()
+                    
+                    if norm_p_name in sample_name.replace('-', ''):
+                        # Extract embryo ID
+                        base_id = sample_orig.split('_')[0]
+                        embryo_id = base_id.split('-')[-1] if '-' in base_id else base_id
+                        
+                        # Determine interpretation
+                        conclusion = str(s_row.get('Conclusion', ''))
+                        interp = "Euploid"
+                        if "ABNORMAL" in conclusion.upper():
+                            interp = "Aneuploid"
+                        elif "MOSAIC" in conclusion.upper():
+                            interp = "Low level mosaic"
+                        
+                        # Parse result for chromosome statuses
+                        res_sum = str(s_row.get('Result', ''))
+                        chr_statuses = {str(i): 'N' for i in range(1, 23)}
+                        
+                        if '-' in res_sum:
+                            parts = res_sum.split('-')
+                            if len(parts) >= 2:
+                                s_type = parts[0]
+                                s_chrs = parts[1].split(',')
+                                for ch in s_chrs:
+                                    ch = ch.strip()
+                                    if ch in chr_statuses:
+                                        chr_statuses[ch] = s_type
+                        
+                        # Auto-match CNV image
+                        cnv_image_path = None
+                        sample_base = sample_orig.split('_')[0]
+                        if os.path.exists(file_dir):
+                            for f in os.listdir(file_dir):
+                                if f.upper().startswith(sample_base.upper()) and f.lower().endswith(('.png', '.jpg')):
+                                    cnv_image_path = os.path.join(file_dir, f)
+                                    break
+                        
+                        embryos.append({
+                            'embryo_id': embryo_id,
+                            'result_summary': res_sum,
+                            'interpretation': interp,
+                            'result_description': conclusion,
+                            'autosomes': conclusion,
+                            'sex_chromosomes': str(s_row.get('GENDER', 'Normal')),
+                            'mtcopy': str(s_row.get('MTcopy', 'NA')),
+                            'cnv_image_path': cnv_image_path,
+                            'chromosome_statuses': chr_statuses,
+                            'mosaic_percentages': {}
+                        })
+                
+                if embryos:
+                    self.bulk_patient_data_list.append({
+                        'patient_info': patient_info,
+                        'embryos': embryos
+                    })
+            
+            # Populate batch list
+            self.batch_list_widget.clear()
+            for i, data in enumerate(self.bulk_patient_data_list):
+                p_name = data['patient_info']['patient_name']
+                e_count = len(data['embryos'])
+                item = QListWidgetItem(f"{p_name} ({e_count} embryos)")
+                item.setData(Qt.ItemDataRole.UserRole, i)
+                self.batch_list_widget.addItem(item)
+            
+            self.statusBar().showMessage(f"Loaded {len(self.bulk_patient_data_list)} patients")
+            self.update_data_summary()
+            QMessageBox.information(self, "Success", 
+                f"Successfully parsed {len(self.bulk_patient_data_list)} patients with "
+                f"{sum(len(d['embryos']) for d in self.bulk_patient_data_list)} total embryos")
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "Parse Error", f"Failed to parse Excel file:\n{str(e)}")
+
+    def on_batch_selection_changed(self, current, previous):
+        """Handle batch list selection change - populate comprehensive batch editor"""
+        if not current:
+            return
+    
+        idx = current.data(Qt.ItemDataRole.UserRole)
+        if idx >= len(self.bulk_patient_data_list):
+            return
+    
+        # Clear existing editor
+        while self.batch_editor_layout.count():
+            child = self.batch_editor_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+    
+        # Get patient data
+        data = self.bulk_patient_data_list[idx]
+        self.current_batch_index = idx
+    
+        # Patient Info Section - ALL FIELDS like manual entry
+        patient_group = QGroupBox("Patient Information")
+        patient_form = QFormLayout()
+        patient_group.setLayout(patient_form)
+    
+        self.batch_patient_name = QLineEdit(data['patient_info']['patient_name'])
+        self.batch_spouse_name = QLineEdit(data['patient_info'].get('spouse_name', ''))
+        self.batch_pin = QLineEdit(data['patient_info']['pin'])
+        self.batch_age = QLineEdit(data['patient_info'].get('age', ''))
+        self.batch_sample_number = QLineEdit(data['patient_info']['sample_number'])
+        self.batch_referring_clinician = QLineEdit(data['patient_info']['referring_clinician'])
+        self.batch_biopsy_date = QLineEdit(data['patient_info']['biopsy_date'])
+        self.batch_hospital = QLineEdit(data['patient_info']['hospital_clinic'])
+        self.batch_sample_collection_date = QLineEdit(data['patient_info'].get('sample_collection_date', ''))
+        self.batch_specimen = QLineEdit(data['patient_info'].get('specimen', 'Day 6 Trophectoderm Biopsy'))
+        self.batch_sample_receipt_date = QLineEdit(data['patient_info'].get('sample_receipt_date', ''))
+        self.batch_biopsy_performed_by = QLineEdit(data['patient_info'].get('biopsy_performed_by', ''))
+        self.batch_report_date = QLineEdit(data['patient_info'].get('report_date', datetime.now().strftime("%d-%m-%Y")))
+        self.batch_indication = QTextEdit(data['patient_info'].get('indication', ''))
+        self.batch_indication.setMaximumHeight(80)
+    
+        # Connect Patient Fields to Live Preview
+        for field in [self.batch_patient_name, self.batch_spouse_name, self.batch_pin, self.batch_age,
+                      self.batch_sample_number, self.batch_referring_clinician, self.batch_biopsy_date,
+                      self.batch_hospital, self.batch_sample_collection_date, self.batch_specimen,
+                      self.batch_sample_receipt_date, self.batch_biopsy_performed_by, self.batch_report_date]:
+            field.textChanged.connect(self.update_batch_preview)
+        self.batch_indication.textChanged.connect(self.update_batch_preview)
+    
+        patient_form.addRow("Patient Name:", self.batch_patient_name)
+        patient_form.addRow("Spouse Name:", self.batch_spouse_name)
+        patient_form.addRow("PIN:", self.batch_pin)
+        patient_form.addRow("Age:", self.batch_age)
+        patient_form.addRow("Sample Number:", self.batch_sample_number)
+        patient_form.addRow("Referring Clinician:", self.batch_referring_clinician)
+        patient_form.addRow("Biopsy Date:", self.batch_biopsy_date)
+        patient_form.addRow("Hospital/Clinic:", self.batch_hospital)
+        patient_form.addRow("Sample Collection Date:", self.batch_sample_collection_date)
+        patient_form.addRow("Specimen:", self.batch_specimen)
+        patient_form.addRow("Sample Receipt Date:", self.batch_sample_receipt_date)
+        patient_form.addRow("Biopsy Performed By:", self.batch_biopsy_performed_by)
+        patient_form.addRow("Report Date:", self.batch_report_date)
+        patient_form.addRow("Indication:", self.batch_indication)
+    
+        self.batch_editor_layout.addWidget(patient_group)
+    
+        # Embryos Section with ALL fields
+        embryos_group = QGroupBox(f"Embryos ({len(data['embryos'])})")
+        embryos_layout = QVBoxLayout()
+        embryos_group.setLayout(embryos_layout)
+    
+        self.batch_embryo_editors = []
+        for i, embryo in enumerate(data['embryos']):
+            embryo_frame = QGroupBox(f"Embryo: {embryo['embryo_id']}")
+            embryo_form = QFormLayout()
+            embryo_frame.setLayout(embryo_form)
+        
+            e_id = QLineEdit(embryo['embryo_id'])
+            e_result_summary = QLineEdit(embryo['result_summary'])
+            e_result_desc = QTextEdit(embryo.get('result_description', ''))
+            e_result_desc.setMaximumHeight(60)
+            e_autosomes = QLineEdit(embryo.get('autosomes', ''))
+            e_sex_chr = QLineEdit(embryo.get('sex_chromosomes', 'Normal'))
+            e_interp = QComboBox()
+            e_interp.addItems(["Euploid", "Aneuploid", "Low level mosaic", "High level mosaic", "Complex mosaic"])
+            e_interp.setCurrentText(embryo['interpretation'])
+            e_mtcopy = QLineEdit(embryo['mtcopy'])
+        
+            # Connect Embryo Fields to Live Preview
+            e_id.textChanged.connect(self.update_batch_preview)
+            e_result_summary.textChanged.connect(self.update_batch_preview)
+            e_result_desc.textChanged.connect(self.update_batch_preview)
+            e_autosomes.textChanged.connect(self.update_batch_preview)
+            e_sex_chr.textChanged.connect(self.update_batch_preview)
+            e_interp.currentTextChanged.connect(self.update_batch_preview)
+            e_mtcopy.textChanged.connect(self.update_batch_preview)
+        
+            # CNV Image with upload button
+            image_layout = QHBoxLayout()
+            e_image_label = QLabel(os.path.basename(embryo['cnv_image_path']) if embryo['cnv_image_path'] else "No image")
+            e_image_path = embryo['cnv_image_path']
+            image_layout.addWidget(e_image_label, 1)
+        
+            upload_img_btn = QPushButton("Upload Image")
+            upload_img_btn.clicked.connect(lambda checked, idx=i: self.upload_embryo_image_batch(idx))
+            image_layout.addWidget(upload_img_btn)
+        
+            embryo_form.addRow("Embryo ID:", e_id)
+            embryo_form.addRow("Result Summary:", e_result_summary)
+            embryo_form.addRow("Result Description:", e_result_desc)
+            embryo_form.addRow("Autosomes:", e_autosomes)
+            embryo_form.addRow("Sex Chromosomes:", e_sex_chr)
+            embryo_form.addRow("Interpretation:", e_interp)
+            embryo_form.addRow("MTcopy:", e_mtcopy)
+        
+            image_widget = QWidget()
+            image_widget.setLayout(image_layout)
+            embryo_form.addRow("CNV Image:", image_widget)
+        
+            embryos_layout.addWidget(embryo_frame)
+        
+            self.batch_embryo_editors.append({
+                'embryo_id': e_id,
+                'result_summary': e_result_summary,
+                'result_description': e_result_desc,
+                'autosomes': e_autosomes,
+                'sex_chromosomes': e_sex_chr,
+                'interpretation': e_interp,
+                'mtcopy': e_mtcopy,
+                'image_label': e_image_label,
+                'image_path': e_image_path
+            })
+    
+        self.batch_editor_layout.addWidget(embryos_group)
+    
+        # Action buttons
+        button_layout = QHBoxLayout()
+    
+        save_btn = QPushButton("Save Changes")
+        save_btn.clicked.connect(self.save_batch_edits)
+        button_layout.addWidget(save_btn)
+    
+        save_individual_draft_btn = QPushButton("Save This Patient as Draft")
+        save_individual_draft_btn.clicked.connect(self.save_individual_patient_draft)
+        button_layout.addWidget(save_individual_draft_btn)
+    
+        preview_btn = QPushButton("Preview PDF")
+        preview_btn.clicked.connect(self.preview_batch_patient_pdf)
+        button_layout.addWidget(preview_btn)
+    
+        generate_one_btn = QPushButton("Generate This Report")
+        generate_one_btn.clicked.connect(self.generate_single_batch_report)
+        button_layout.addWidget(generate_one_btn)
+    
+        self.batch_editor_layout.addWidget(QWidget())  # Spacer widget
+        button_widget = QWidget()
+        button_widget.setLayout(button_layout)
+        self.batch_editor_layout.addWidget(button_widget)
+    
+        self.batch_editor_layout.addStretch()
+        
+        # Trigger initial preview
+        self.update_batch_preview()
+
+    def save_batch_edits(self):
+        """Save edits from batch editor back to data list - ALL FIELDS"""
+        if not hasattr(self, 'current_batch_index'):
+            return
+    
+        idx = self.current_batch_index
+        data = self.bulk_patient_data_list[idx]
+    
+        # Update ALL patient info fields
+        data['patient_info']['patient_name'] = self.batch_patient_name.text()
+        data['patient_info']['spouse_name'] = self.batch_spouse_name.text()
+        data['patient_info']['pin'] = self.batch_pin.text()
+        data['patient_info']['age'] = self.batch_age.text()
+        data['patient_info']['sample_number'] = self.batch_sample_number.text()
+        data['patient_info']['referring_clinician'] = self.batch_referring_clinician.text()
+        data['patient_info']['biopsy_date'] = self.batch_biopsy_date.text()
+        data['patient_info']['hospital_clinic'] = self.batch_hospital.text()
+        data['patient_info']['sample_collection_date'] = self.batch_sample_collection_date.text()
+        data['patient_info']['specimen'] = self.batch_specimen.text()
+        data['patient_info']['sample_receipt_date'] = self.batch_sample_receipt_date.text()
+        data['patient_info']['biopsy_performed_by'] = self.batch_biopsy_performed_by.text()
+        data['patient_info']['report_date'] = self.batch_report_date.text()
+        data['patient_info']['indication'] = self.batch_indication.toPlainText()
+    
+        # Update ALL embryo fields
+        for i, editor in enumerate(self.batch_embryo_editors):
+            if i < len(data['embryos']):
+                data['embryos'][i]['embryo_id'] = editor['embryo_id'].text()
+                data['embryos'][i]['result_summary'] = editor['result_summary'].text()
+                data['embryos'][i]['result_description'] = editor['result_description'].toPlainText()
+                data['embryos'][i]['autosomes'] = editor['autosomes'].text()
+                data['embryos'][i]['sex_chromosomes'] = editor['sex_chromosomes'].text()
+                data['embryos'][i]['interpretation'] = editor['interpretation'].currentText()
+                data['embryos'][i]['mtcopy'] = editor['mtcopy'].text()
+                data['embryos'][i]['cnv_image_path'] = editor['image_path']
+    
+        self.statusBar().showMessage("Changes saved to batch")
+        QMessageBox.information(self, "Saved", "Changes saved successfully!")
+
+    def upload_embryo_image_batch(self, embryo_idx):
+        """Upload CNV image for specific embryo in batch"""
+        if not hasattr(self, 'current_batch_index'):
+            return
+    
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select CNV Chart Image",
+            "",
+            "Image Files (*.png *.jpg *.jpeg)"
+        )
+    
+        if file_path:
+            # Update the data
+            batch_idx = self.current_batch_index
+            self.bulk_patient_data_list[batch_idx]['embryos'][embryo_idx]['cnv_image_path'] = file_path
+        
+            # Update the UI
+            if embryo_idx < len(self.batch_embryo_editors):
+                self.batch_embryo_editors[embryo_idx]['image_label'].setText(os.path.basename(file_path))
+                self.batch_embryo_editors[embryo_idx]['image_path'] = file_path
+        
+            self.statusBar().showMessage(f"Image uploaded for embryo {embryo_idx + 1}")
+
+    def save_individual_patient_draft(self):
+        """Save individual patient as JSON draft"""
+        if not hasattr(self, 'current_batch_index'):
+            return
+    
+        idx = self.current_batch_index
+        data = self.bulk_patient_data_list[idx]
+    
+        p_name = data['patient_info']['patient_name'].replace(' ', '_')
+        default_name = f"{p_name}_draft.json"
+    
+        path, _ = QFileDialog.getSaveFileName(self, "Save Patient Draft", default_name, "JSON Files (*.json)")
+        if path:
+            try:
+                with open(path, 'w') as f:
+                    json.dump(data, f, indent=4)
+                QMessageBox.information(self, "Success", f"Patient draft saved to {os.path.basename(path)}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", str(e))
+
+    def update_batch_preview(self):
+        """Update live preview for batch editor"""
+        self.schedule_batch_preview_update()
+
+    def schedule_batch_preview_update(self):
+        """Debounce batch preview updates"""
+        if not hasattr(self, 'batch_preview_timer'):
+            self.batch_preview_timer = QTimer()
+            self.batch_preview_timer.setSingleShot(True)
+            self.batch_preview_timer.setInterval(1000) # 1 second debounce
+            self.batch_preview_timer.timeout.connect(self.start_batch_preview_generation)
+            
+        self.batch_preview_timer.start()
+
+    def start_batch_preview_generation(self):
+        """Generate temp PDF for batch patient and show in preview"""
+        if not hasattr(self, 'batch_pdf_view') or isinstance(self.batch_pdf_view, QLabel):
+            return
+            
+        if not hasattr(self, 'current_batch_index'):
+            return
+
+        # Gather data from batch editor fields (Live data, not stored data)
+        p_data = {
+            'patient_name': self.batch_patient_name.text(),
+            'spouse_name': self.batch_spouse_name.text(),
+            'pin': self.batch_pin.text(),
+            'age': self.batch_age.text(),
+            'sample_number': self.batch_sample_number.text(),
+            'referring_clinician': self.batch_referring_clinician.text(),
+            'biopsy_date': self.batch_biopsy_date.text(),
+            'hospital_clinic': self.batch_hospital.text(),
+            'sample_collection_date': self.batch_sample_collection_date.text(),
+            'specimen': self.batch_specimen.text(),
+            'sample_receipt_date': self.batch_sample_receipt_date.text(),
+            'biopsy_performed_by': self.batch_biopsy_performed_by.text(),
+            'report_date': self.batch_report_date.text(),
+            'indication': self.batch_indication.toPlainText()
+        }
+        
+        e_data = []
+        for editor in self.batch_embryo_editors:
+            e_data.append({
+                'embryo_id': editor['embryo_id'].text(),
+                'result_summary': editor['result_summary'].text(),
+                'interpretation': editor['interpretation'].currentText(),
+                'result_description': editor['result_description'].toPlainText(),
+                'autosomes': editor['autosomes'].text(),
+                'sex_chromosomes': editor['sex_chromosomes'].text(),
+                'mtcopy': editor['mtcopy'].text(),
+                'cnv_image_path': editor['image_path'],
+                'chromosome_statuses': {str(i): 'N' for i in range(1, 23)} # Defaulting for preview
+            })
+
+        import tempfile
+        temp_pdf = os.path.join(tempfile.gettempdir(), f"batch_preview_{self.current_batch_index}.pdf")
+        
+        # Run in worker
+        if hasattr(self, 'batch_preview_worker') and self.batch_preview_worker.isRunning():
+            return
+            
+        self.batch_preview_worker = PreviewWorker(p_data, e_data, temp_pdf)
+        self.batch_preview_worker.finished.connect(lambda path: self.on_batch_preview_generated(path))
+        self.batch_preview_worker.start()
+
+    def on_batch_preview_generated(self, pdf_path):
+        """Load generated batch PDF into viewer"""
+        if QPdfDocument and hasattr(self, 'batch_pdf_document') and os.path.exists(pdf_path):
+            self.batch_pdf_document.load(pdf_path)
+            self.batch_pdf_view.setZoomMode(QPdfView.ZoomMode.FitInView)
+
+    def preview_batch_patient_pdf(self):
+        """Preview PDF for current batch patient"""
+        if not hasattr(self, 'current_batch_index'):
+            return
+    
+        # Save current edits first
+        self.save_batch_edits()
+    
+        idx = self.current_batch_index
+        data = self.bulk_patient_data_list[idx]
+    
+        # Generate temp PDF
+        import tempfile
+        temp_dir = tempfile.mkdtemp()
+        temp_pdf = os.path.join(temp_dir, "preview.pdf")
+    
+        try:
+            template = PGTAReportTemplate(assets_dir="assets/pgta")
+            template.generate_pdf(temp_pdf, data['patient_info'], data['embryos'])
+        
+            # Show in PDF viewer dialog
+            self.show_pdf_preview(temp_pdf, data['patient_info']['patient_name'])
+        except Exception as e:
+            QMessageBox.critical(self, "Preview Error", f"Failed to generate preview:\\n{str(e)}")
+
+    def show_pdf_preview(self, pdf_path, patient_name):
+        """Show PDF preview dialog"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"PDF Preview - {patient_name}")
+        dialog.resize(800, 1000)
+    
+        layout = QVBoxLayout()
+        dialog.setLayout(layout)
+    
+        if QPdfDocument and QPdfView:
+            # Use Qt PDF viewer with parent passed to constructor
+            pdf_doc = QPdfDocument(dialog)
+            pdf_view = QPdfView(dialog)
+            pdf_doc.load(pdf_path)
+            pdf_view.setDocument(pdf_doc)
+            pdf_view.setPageMode(QPdfView.PageMode.MultiPage)
+            layout.addWidget(pdf_view)
+        else:
+            # Fallback: show message
+            label = QLabel(f"PDF generated at:\\n{pdf_path}\\n\\nPlease open with external viewer.")
+            label.setWordWrap(True)
+            layout.addWidget(label)
+        
+            open_btn = QPushButton("Open with System Viewer")
+            open_btn.clicked.connect(lambda: os.startfile(pdf_path) if os.name == 'nt' else os.system(f'xdg-open "{pdf_path}"'))
+            layout.addWidget(open_btn)
+    
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.close)
+        layout.addWidget(close_btn)
+    
+        dialog.exec()
+
+    def generate_single_batch_report(self):
+        """Generate report for current batch patient only"""
+        if not hasattr(self, 'current_batch_index'):
+            return
+    
+        output_dir = self.bulk_output_label.text()
+        if output_dir == "No folder selected":
+            QMessageBox.warning(self, "No Output Directory", "Please select an output directory first")
+            return
+    
+        # Save current edits first
+        self.save_batch_edits()
+    
+        idx = self.current_batch_index
+        data = self.bulk_patient_data_list[idx]
+    
+        try:
+            template = PGTAReportTemplate(assets_dir="assets/pgta")
+            p_name = data['patient_info']['patient_name'].replace(' ', '_')
+            
+            # Generate both PDF and DOCX if requested in settings
+            if self.generate_pdf_check.isChecked():
+                pdf_path = os.path.join(output_dir, f"{p_name}_PGTA_Report.pdf")
+                template.generate_pdf(pdf_path, data['patient_info'], data['embryos'])
+                self.statusBar().showMessage(f"Generated PDF for {data['patient_info']['patient_name']}")
+                
+            if self.generate_docx_check.isChecked():
+                from pgta_docx_generator import PGTADocxGenerator
+                docx_gen = PGTADocxGenerator(assets_dir="assets/pgta")
+                docx_path = os.path.join(output_dir, f"{p_name}_PGTA_Report.docx")
+                docx_gen.generate_docx(docx_path, data['patient_info'], data['embryos'])
+                self.statusBar().showMessage(f"Generated DOCX for {data['patient_info']['patient_name']}")
+        
+            QMessageBox.information(self, "Success", f"Reports generated for {data['patient_info']['patient_name']}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to generate report:\\n{str(e)}")
+
+    def save_bulk_draft(self):
+        """Save batch to JSON file"""
+        if not self.bulk_patient_data_list:
+            QMessageBox.warning(self, "No Data", "No batch data to save")
+            return
+        
+        path, _ = QFileDialog.getSaveFileName(self, "Save Batch Draft", "", "JSON Files (*.json)")
+        if path:
+            try:
+                with open(path, 'w') as f:
+                    json.dump(self.bulk_patient_data_list, f, indent=4)
+                QMessageBox.information(self, "Success", f"Batch draft saved to {os.path.basename(path)}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", str(e))
+
+    def load_bulk_draft(self):
+        """Load batch from JSON file"""
+        path, _ = QFileDialog.getOpenFileName(self, "Load Batch Draft", "", "JSON Files (*.json)")
+        if path:
+            try:
+                with open(path, 'r') as f:
+                    self.bulk_patient_data_list = json.load(f)
+                
+                # Populate batch list
+                self.batch_list_widget.clear()
+                for i, data in enumerate(self.bulk_patient_data_list):
+                    p_name = data['patient_info']['patient_name']
+                    e_count = len(data['embryos'])
+                    item = QListWidgetItem(f"{p_name} ({e_count} embryos)")
+                    item.setData(Qt.ItemDataRole.UserRole, i)
+                    self.batch_list_widget.addItem(item)
+                
+                self.update_data_summary()
+                QMessageBox.information(self, "Success", f"Loaded {len(self.bulk_patient_data_list)} patients")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", str(e))
+
+    def generate_all_batch_reports(self):
+        """Generate reports for all patients in batch"""
+        if not self.bulk_patient_data_list:
+            QMessageBox.warning(self, "No Data", "No batch data to generate reports from")
+            return
+    
+        output_dir = self.bulk_output_label.text()
+        if output_dir == "No folder selected":
+            QMessageBox.warning(self, "No Output Directory", "Please select an output directory first")
+            return
+    
+        # Use existing report generation worker
+        self.progress_bar.setVisible(True)
+        self.progress_label.setVisible(True)
+        self.generate_btn.setEnabled(False)
+    
+        self.worker = ReportGeneratorWorker(
+            self.bulk_patient_data_list,
+            output_dir,
+            self.generate_pdf_check.isChecked(),
+            self.generate_docx_check.isChecked(),
+            "PGT-A"
+        )
+    
+        self.worker.progress.connect(self.update_progress)
+        self.worker.finished.connect(self.generation_finished)
+        self.worker.error.connect(self.generation_error)
+        self.worker.start()
+
     def load_bulk_data(self):
         """Load data from bulk file"""
         file_path = self.bulk_file_label.text()
@@ -1619,7 +2429,7 @@ class PGTAReportGeneratorApp(QMainWindow):
     
     def add_images_with_embryo_id(self):
         """Add CNV chart images with embryo ID assignment"""
-        from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout as QVBoxLayoutDialog
+        from PyQt6.QtWidgets import QVBoxLayout as QVBoxLayoutDialog
         
         file_paths, _ = QFileDialog.getOpenFileNames(
             self,
@@ -1853,12 +2663,13 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("PGT-A Report Generator")
     app.setOrganizationName("PGTA")
-    
+
     window = PGTAReportGeneratorApp()
     window.show()
-    
+
     sys.exit(app.exec())
 
 
 if __name__ == "__main__":
     main()
+

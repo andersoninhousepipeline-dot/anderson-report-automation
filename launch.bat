@@ -1,7 +1,7 @@
 @echo off
-TITLE PGT-A Report Generator
+TITLE ADVAT Report Generator
 echo ===================================
-echo PGT-A Report Generator (Windows)
+echo ADVAT Report Generator (Windows)
 echo ===================================
 echo.
 
@@ -33,51 +33,48 @@ if "%PYTHON_CMD%"=="" (
     exit /b
 )
 
-echo Using Python command: %PYTHON_CMD%
-
-:: Check dependencies
-echo Checking dependencies...
-%PYTHON_CMD% -c "import reportlab, docx, PyQt6, pandas, openpyxl, PIL, pdfplumber, PyPDF2" 2>import_error.log
-if %errorlevel% neq 0 (
-    type import_error.log
-    echo.
-    echo Missing dependencies detected!
-    echo Upgrading pip...
-    %PYTHON_CMD% -m pip install --upgrade pip
-    
-    echo Installing required packages...
-    %PYTHON_CMD% -m pip install -r requirements_app.txt
-    
+:: Create Virtual Environment if it doesn't exist
+if not exist ".venv" (
+    echo Creating virtual environment...
+    %PYTHON_CMD% -m venv .venv
     if %errorlevel% neq 0 (
-        echo.
-        echo Error: Failed to install dependencies.
-        echo This often happens when PyQt6 cannot be installed.
-        echo.
-        echo TRY THIS MANUALLY: 
-        echo Open Command Prompt and type: %PYTHON_CMD% -m pip install PyQt6 --user
-        echo.
+        echo Error: Failed to create virtual environment.
         pause
         exit /b
     )
 )
 
+:: Activate Virtual Environment
+echo Activating environment...
+call .venv\Scripts\activate.bat
 
+:: Install/Update dependencies
+echo Checking/Installing dependencies...
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+if %errorlevel% neq 0 (
+    echo.
+    echo Error: Failed to install dependencies.
+    pause
+    exit /b
+)
 
 echo.
-echo Starting PGT-A Report Generator...
+echo Starting ADVAT Report Generator...
 echo.
-%PYTHON_CMD% pgta_report_generator.py 2>run_error.log
+python pgta_report_generator.py 2>run_error.log
+
 if %errorlevel% neq 0 (
     echo.
     echo [ERROR] The application failed to start.
     echo Detailed error:
     type run_error.log
     echo.
-    echo Tip: If you see "ImportError: DLL load failed", please install:
-    echo https://aka.ms/vs/17/release/vc_redist.x64.exe
-    echo.
+    pause
 )
 
+deactivate
 echo.
 echo Application closed.
 pause

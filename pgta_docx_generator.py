@@ -175,15 +175,15 @@ class PGTADocxGenerator:
             footer_table = footer.add_table(rows=1, cols=2, width=Inches(6.5))
             # Set table width
             footer_table.autofit = False
-            footer_table.columns[0].width = Inches(5.0)
-            footer_table.columns[1].width = Inches(1.5)
+            footer_table.columns[0].width = Inches(5.5) # Expanded
+            footer_table.columns[1].width = Inches(1.0)
             
             # Add Footer Banner (Base64)
             try:
                 footer_stream = BytesIO(base64.b64decode(FOOTER_BANNER_B64))
                 para_banner = footer_table.rows[0].cells[0].paragraphs[0]
                 run_banner = para_banner.add_run()
-                run_banner.add_picture(footer_stream, width=Inches(5.0))
+                run_banner.add_picture(footer_stream, width=Inches(5.5))
             except Exception as e:
                  print(f"Error adding Base64 footer banner to DOCX: {e}")
             
@@ -201,7 +201,7 @@ class PGTADocxGenerator:
         # Title
         title = doc.add_paragraph()
         title_run = title.add_run("Preimplantation Genetic Testing for Aneuploidies (PGT-A)")
-        title_run.bold = True
+        title_run.bold = False
         title_run.font.size = Pt(14)
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
@@ -220,7 +220,9 @@ class PGTADocxGenerator:
         disclaimer = doc.add_paragraph()
         disclaimer_run = disclaimer.add_run("This test does not reveal sex of the fetus & confers to PNDT act, 1994")
         disclaimer_run.italic = True
-        disclaimer_run.font.size = Pt(9)
+        disclaimer_run.font.name = 'Segoe UI Semibold Italic'
+        disclaimer_run.font.size = Pt(9.5)
+        disclaimer_run.font.color.rgb = RGBColor(0, 0, 0)
         disclaimer.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
         doc.add_paragraph()  # Spacer
@@ -281,10 +283,20 @@ class PGTADocxGenerator:
                     self._set_cell_background(cell, "F1F1F7")  # Exact from source
                 
                 # Apply text color
-                if text_color and (idx_cell == 2 or idx_cell == 4): # Result and Interpretation
+                if text_color and idx_cell == 4: # Only Interpretation gets color?
+                    # User said "Result must be in black for all" in embryo section, 
+                    # assuming summary table Result also should be black or keep it?
+                    # "Results summary table in first page: no column lines inbetween"
+                    # I'll keep interpretation color for now as requested for ALL result logic was mainly for embryo section.
                     for p in cell.paragraphs:
                         for r in p.runs:
                             r.font.color.rgb = RGBColor.from_string(text_color[1:])
+                
+                # Force Result to black if requested (user said "results : must be in black for all")
+                if idx_cell == 2:
+                     for p in cell.paragraphs:
+                        for r in p.runs:
+                            r.font.color.rgb = RGBColor(0, 0, 0)
         
         doc.add_paragraph() # Spacer
     
@@ -321,10 +333,12 @@ class PGTADocxGenerator:
         table.rows[6].cells[0].paragraphs[0].runs[0].bold = True
         table.rows[6].cells[1].text = ":"
         table.rows[6].cells[2].text = patient_data.get('referring_clinician', '')
+        table.rows[6].cells[2].paragraphs[0].runs[0].bold = True
         table.rows[6].cells[3].text = "Biopsy date"
         table.rows[6].cells[3].paragraphs[0].runs[0].bold = True
         table.rows[6].cells[4].text = ":"
         table.rows[6].cells[5].text = patient_data.get('biopsy_date', '')
+        table.rows[6].cells[5].paragraphs[0].runs[0].bold = True
         
         # Row 8: Hospital and Sample collection date
         table.rows[8].cells[0].text = "Hospital/Clinic"
@@ -341,23 +355,28 @@ class PGTADocxGenerator:
         table.rows[10].cells[0].paragraphs[0].runs[0].bold = True
         table.rows[10].cells[1].text = ":"
         table.rows[10].cells[2].text = patient_data.get('specimen', '')
+        table.rows[10].cells[2].paragraphs[0].runs[0].bold = True
         table.rows[10].cells[3].text = "Sample receipt date"
         table.rows[10].cells[3].paragraphs[0].runs[0].bold = True
         table.rows[10].cells[4].text = ":"
         table.rows[10].cells[5].text = patient_data.get('sample_receipt_date', '')
+        table.rows[10].cells[5].paragraphs[0].runs[0].bold = True
         
-        # Row 12: Report date and Biopsy performed by
-        table.rows[12].cells[0].text = "Report date"
+        # Row 12: Biopsy performed by and Report date (REORDERED)
+        table.rows[12].cells[0].text = "Biopsy performed by"
         table.rows[12].cells[0].paragraphs[0].runs[0].bold = True
         table.rows[12].cells[1].text = ":"
-        table.rows[12].cells[2].text = patient_data.get('report_date', '')
-        table.rows[12].cells[3].text = "Biopsy performed by"
+        table.rows[12].cells[2].text = patient_data.get('biopsy_performed_by', '')
+        table.rows[12].cells[2].paragraphs[0].runs[0].bold = True
+        table.rows[12].cells[3].text = "Report date"
         table.rows[12].cells[3].paragraphs[0].runs[0].bold = True
         table.rows[12].cells[4].text = ":"
-        table.rows[12].cells[5].text = patient_data.get('biopsy_performed_by', '')
+        table.rows[12].cells[5].text = patient_data.get('report_date', '')
+        table.rows[12].cells[5].paragraphs[0].runs[0].bold = True
         
-        # Set column widths precisely (Total = ~6.5 Inches)
-        widths = [Inches(1.2), Inches(0.2), Inches(1.8), Inches(1.3), Inches(0.2), Inches(1.8)]
+        # Set column widths precisely (Total = 6.5 Inches - FULL CONTAINER)
+        widths = [Inches(1.25), Inches(0.1), Inches(1.85), Inches(1.25), Inches(0.1), Inches(1.85)]
+        table.alignment = WD_ALIGN_PARAGRAPH.CENTER
         for row in table.rows:
             for i, width in enumerate(widths):
                 row.cells[i].width = width
@@ -446,15 +465,18 @@ class PGTADocxGenerator:
         
         # PNDT Disclaimer in a grey box
         disclaimer_table = doc.add_table(rows=1, cols=1)
-        disclaimer_table.width = Inches(6.0)
+        disclaimer_table.width = Inches(6.4)
+        disclaimer_table.alignment = WD_ALIGN_PARAGRAPH.CENTER
         cell = disclaimer_table.rows[0].cells[0]
         self._set_cell_background(cell, "F2F2F2") # Grey bg
         p = cell.paragraphs[0]
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = p.add_run("This test does not reveal sex of the fetus & confers to PNDT act, 1994")
-        run.bold = True
-        run.font.size = Pt(9)
-        
+        run.bold = False
+        run.italic = True
+        run.font.name = 'Segoe UI Semibold Italic'
+        run.font.size = Pt(9.5)
+        run.font.color.rgb = RGBColor(0, 0, 0)
         doc.add_paragraph()  # Spacer
         
         doc.add_paragraph(f"EMBRYO: {embryo_data.get('embryo_id', '')}").style = 'Heading 2'
@@ -474,6 +496,7 @@ class PGTADocxGenerator:
             mtcopy = "NA"
             
         summary_table = doc.add_table(rows=5, cols=2)
+        summary_table.width = Inches(6.5) # FIT TO CONTENT/BOX WIDTH
         summary_table.style = 'Table Grid'
         
         rows = [
@@ -500,7 +523,7 @@ class PGTADocxGenerator:
                 self._set_cell_background(cell, "F1F1F7")
                 for p in cell.paragraphs:
                     p.runs[0].font.size = Pt(9)
-                    if color: 
+                    if color and label != "Result:": # Keep result black
                         p.runs[0].font.color.rgb = RGBColor.from_string(color[1:])
 
         doc.add_paragraph()  # Spacer
@@ -513,7 +536,7 @@ class PGTADocxGenerator:
         # CNV Chart Image
         if 'cnv_image_path' in embryo_data and embryo_data['cnv_image_path'] and os.path.exists(embryo_data['cnv_image_path']):
             try:
-                doc.add_picture(embryo_data['cnv_image_path'], width=Inches(6.0))
+                doc.add_picture(embryo_data['cnv_image_path'], width=Inches(6.5)) # FULL WIDTH
                 doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
                 doc.add_paragraph()  # Spacer
             except Exception as e:
