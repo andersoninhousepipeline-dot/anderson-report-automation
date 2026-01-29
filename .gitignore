@@ -1,9 +1,15 @@
+# System and Python junk
 __pycache__/
+*.vcf
+*.log
+.DS_Store
+
+# Local test outputs and drafts
 *.pdf
 *.docx
-*.vcf
-*.png
+*.json
 temp_preview.pdf
 test_report.pdf
-pgta_draft.json
-pgta_draft_Kalpana.json
+!assets/**
+!pgta_styles.css
+!pgta_assets.py

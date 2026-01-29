@@ -23,7 +23,7 @@ A professional desktop application that generates PDF and DOCX reports for Preim
 
 - **Python 3.8+**
 - **Operating System**: Windows, macOS, or Linux
-- **Dependencies**: See `requirements_app.txt`
+- **Dependencies**: See `requirements.txt`
 
 ---
 
@@ -49,7 +49,7 @@ A professional desktop application that generates PDF and DOCX reports for Preim
 
 ### Step 1: Install Python Dependencies
 ```bash
-pip install -r requirements_app.txt
+pip install -r requirements.txt
 ```
 
 ### Step 2: Run the App
@@ -151,10 +151,13 @@ python pgta_report_generator.py
 2. **Choose Formats**: 
    - ✅ Generate PDF
    - ✅ Generate DOCX
-3. **Review Data Summary**: Verify patient and embryo count
-4. Click **🚀 Generate Reports**
-5. Monitor progress bar
-6. Open output folder when complete
+3. **Select Branding**:
+   - **With Logo**: Includes full header/footer branding.
+   - **Without Logo**: Removes main branding but **preserves the GenQA logo**.
+4. **Review Data Summary**: Verify patient and embryo count
+5. Click **🚀 Generate Reports**
+6. Monitor progress bar
+7. Open output folder when complete
 
 ---
 
@@ -229,12 +232,13 @@ PGTA-Report/
 ├── pgta_report_generator.py      # Main GUI application
 ├── pgta_template.py               # PDF template engine
 ├── pgta_docx_generator.py         # DOCX generator
-├── requirements_app.txt           # Python dependencies
+├── requirements.txt               # Python dependencies
 ├── template_specification.md      # Template documentation
-├── extracted_assets/              # Logo and branding images
-│   ├── image_page1_0.png         # Header logo
-│   ├── image_page1_1.png         # Footer banner
-│   └── image_page1_2.png         # Footer logo
+├── assets/pgta/                   # Logo and branding images
+│   ├── image_page1_0.png          # Header logo
+│   ├── image_page1_1.png          # Footer banner
+│   ├── genqa_logo.png             # GenQA logo
+│   └── fonts/                     # Professional fonts (Segoe UI, etc.)
 └── README.md                      # This file
 ```
 
@@ -267,10 +271,10 @@ The following content is **automatically included** in all reports and does not 
 ## 🎨 Customization
 
 ### Updating Logos/Branding
-Replace files in `extracted_assets/`:
+Replace files in `assets/pgta/`:
 - `image_page1_0.png` - Header logo (1280x193px recommended)
 - `image_page1_1.png` - Footer banner (1299x182px recommended)
-- `image_page1_2.png` - Footer logo (186x99px recommended)
+- `genqa_logo.png`    - GenQA logo
 
 ### Modifying Static Content
 Edit the static text in:

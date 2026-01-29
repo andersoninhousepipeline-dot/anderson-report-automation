@@ -19,7 +19,7 @@ import sys
 import base64
 from io import BytesIO
 from datetime import datetime
-from pgta_assets import HEADER_LOGO_B64, FOOTER_BANNER_B64, SIGNS_IMAGE_B64
+from pgta_assets import HEADER_LOGO_B64, FOOTER_BANNER_B64, SIGN_ANAND_B64, SIGN_SACHIN_B64, SIGN_DIRECTOR_B64
 
 
 class PGTAReportTemplate:
@@ -38,7 +38,7 @@ class PGTAReportTemplate:
     PAGE_HEIGHT = 792  # points
     MARGIN_LEFT = 58  # Reduced from 72 to allow title in single line
     MARGIN_RIGHT = 58
-    MARGIN_TOP = 100
+    MARGIN_TOP = 70
     MARGIN_BOTTOM = 60
     CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT  # 496 points
     
@@ -216,7 +216,7 @@ class PGTAReportTemplate:
             parent=self.styles['Normal'],
             fontSize=11,  # Matches source 11.04pt
             leading=13,
-            alignment=TA_LEFT,
+            alignment=TA_JUSTIFY,
             fontName=self._get_font('Calibri', 'Helvetica')
         ))
         
@@ -248,6 +248,7 @@ class PGTAReportTemplate:
             leading=13, # Increased leading
             leftIndent=20,
             bulletIndent=10,
+            alignment=TA_JUSTIFY,
             fontName=self._get_font('Calibri', 'Helvetica')
         ))
         
@@ -268,7 +269,7 @@ class PGTAReportTemplate:
             alignment=TA_CENTER
         ))
     
-    def generate_pdf(self, output_path, patient_data, embryos_data):
+    def generate_pdf(self, output_path, patient_data, embryos_data, show_logo=True):
         """
         Generate PDF report
         
@@ -276,6 +277,7 @@ class PGTAReportTemplate:
             output_path: Path to save PDF
             patient_data: Dictionary with patient information
             embryos_data: List of dictionaries with embryo data
+            show_logo: Whether to show header and footer branding
         """
         # Create PDF document
         doc = SimpleDocTemplate(
@@ -286,6 +288,9 @@ class PGTAReportTemplate:
             topMargin=self.MARGIN_TOP,
             bottomMargin=self.MARGIN_BOTTOM
         )
+        
+        # Store show_logo preference for the canvas callback
+        self._show_logo = show_logo
         
         # Build story (content)
         story = []
@@ -316,6 +321,8 @@ class PGTAReportTemplate:
     
     def _add_header_footer(self, canvas, doc):
         """Add header and footer to each page using Base64 assets for robustness"""
+        show_logo = getattr(self, '_show_logo', True)
+            
         canvas.saveState()
         
         def draw_b64_img(b64_str, x, y, w, h):
@@ -328,13 +335,14 @@ class PGTAReportTemplate:
                 print(f"Error drawing Base64 image: {e}")
                 return False
 
-        # Draw Header Logo (Base64)
-        draw_b64_img(HEADER_LOGO_B64, 72, 720, 468, 72)
+        if show_logo:
+            # Draw Header Logo (Base64)
+            draw_b64_img(HEADER_LOGO_B64, 72, 720, 468, 72)
+            
+            # Draw Footer Banner (Base64)
+            draw_b64_img(FOOTER_BANNER_B64, 72, 0.4, 468, 66)
         
-        # Draw Footer Banner (Base64)
-        draw_b64_img(FOOTER_BANNER_B64, 72, 0.4, 468, 66)
-        
-        # Draw GenQA Logo (Small - keep file reference as it's secondary)
+        # ALWAYS Draw GenQA Logo (per user request: "without logo genqa must be there")
         if os.path.exists(self.GENQA_LOGO):
              try:
                  canvas.drawImage(self.GENQA_LOGO, 454, 35, width=67, height=36, preserveAspectRatio=True, mask='auto')
@@ -354,7 +362,7 @@ class PGTAReportTemplate:
             title_style
         )
         elements.append(title)
-        elements.append(Spacer(1, 8)) # Reduced spacer
+        elements.append(Spacer(1, 6)) # Fixed reduced spacer
         
         # Patient information table
         patient_table = self._create_patient_info_table(patient_data)
@@ -366,9 +374,11 @@ class PGTAReportTemplate:
             "<b>This test does not reveal sex of the fetus & confers to PNDT act, 1994</b>",
             self.styles['PGTADisclaimer']
         )
-        # Use a single-cell table for the background color (Exact grey from source)
+        # Use a single-cell table for the background color (Clean white with line as requested)
         disclaimer_table = Table([[disclaimer]], colWidths=[490], hAlign='CENTER')
         disclaimer_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(self.COLORS['grey_bg'])),
             ('TOPPADDING', (0, 0), (-1, -1), 6),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
@@ -395,9 +405,22 @@ class PGTAReportTemplate:
         
         return elements
     
+    def _clean(self, val, default=""):
+        """Sanitize value to remove 'nan' and trim whitespace"""
+        if val is None: return default
+        s = str(val).strip()
+        if s.lower() == "nan": return default
+        return s
+    
     def _wrap_text(self, text, bold=False, font_size=None, align='LEFT'):
         """Wrap text in a Paragraph for table cells"""
         if not text: return ""
+        
+        # Robust 'nan' check
+        content = str(text).strip()
+        if content.lower() == "nan":
+            return ""
+            
         style = self.styles['PGTABodyText']
         if align == 'CENTER':
             style = self.styles['PGTACenteredBodyText']
@@ -414,24 +437,27 @@ class PGTAReportTemplate:
     def _create_patient_info_table(self, patient_data):
         """Create patient information table"""
         # Prepare data with Paragraph wrapping to prevent overlap
+        # Using specific colWidths for tight PIN alignment: [85, 12, 146, 85, 12, 150] Total: 490pt
         data = [
-            [self._wrap_text('<b>Patient name</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{patient_data.get('patient_name', '')}</b>"), self._wrap_text('<b>PIN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{patient_data.get('pin', '')}</b>")],
-            [self._wrap_text(''), self._wrap_text(''), self._wrap_text(f"<b>{patient_data.get('spouse_name', '')}</b>"), self._wrap_text(''), self._wrap_text(''), self._wrap_text('')],
-            [self._wrap_text('<b>Date of Birth/ Age</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{patient_data.get('age', '')}</b>"), self._wrap_text('<b>Sample Number</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{patient_data.get('sample_number', '')}</b>")],
-            [self._wrap_text('<b>Referring Clinician</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{patient_data.get('referring_clinician', '')}</b>"), self._wrap_text('<b>Biopsy date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{patient_data.get('biopsy_date', '')}</b>")],
-            [self._wrap_text('<b>Hospital/Clinic</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{patient_data.get('hospital_clinic', '')}</b>"), self._wrap_text('<b>Sample collection date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{patient_data.get('sample_collection_date', '')}</b>")],
-            [self._wrap_text('<b>Specimen</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{patient_data.get('specimen', '')}</b>"), self._wrap_text('<b>Sample receipt date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{patient_data.get('sample_receipt_date', '')}</b>")],
-            [self._wrap_text('<b>Biopsy performed by</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{patient_data.get('biopsy_performed_by', '')}</b>"), self._wrap_text('<b>Report date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{patient_data.get('report_date', '')}</b>")]
+            [self._wrap_text('<b>Patient name</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('patient_name'))}</b>"), self._wrap_text('<b>PIN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('pin'))}</b>")],
+            [self._wrap_text(''), self._wrap_text(''), self._wrap_text(f"<b>{self._clean(patient_data.get('spouse_name'))}</b>"), self._wrap_text(''), self._wrap_text(''), self._wrap_text('')],
+            [self._wrap_text('<b>Date of Birth/ Age</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('age'))}</b>"), self._wrap_text('<b>Sample Number</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_number'))}</b>")],
+            [self._wrap_text('<b>Referring Clinician</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('referring_clinician'))}</b>"), self._wrap_text('<b>Biopsy date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_date'))}</b>")],
+            [self._wrap_text('<b>Hospital/Clinic</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('hospital_clinic'))}</b>"), self._wrap_text('<b>Sample collection date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_collection_date'))}</b>")],
+            [self._wrap_text('<b>Specimen</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('specimen'))}</b>"), self._wrap_text('<b>Sample receipt date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_receipt_date'))}</b>")],
+            [self._wrap_text('<b>Biopsy performed by</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_performed_by'))}</b>"), self._wrap_text('<b>Report date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('report_date'))}</b>")]
         ]
         
-        # Create table with optimized widths [Total: 496pt - Expanded to full container]
-        table = Table(data, colWidths=[98, 8, 137, 98, 8, 141], hAlign='LEFT')
+        # Create table with optimized widths [Total: 490pt]
+        table = Table(data, colWidths=[85, 12, 146, 85, 12, 150], hAlign='LEFT')
         
         # Style table
         table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, -1), self._get_font('SegoeUI-Bold', 'Helvetica-Bold')),
             ('FONTSIZE', (0, 0), (-1, -1), 10),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'), # Standard LEFT alignment
+            ('ALIGN', (3, 0), (3, -1), 'RIGHT'), # Standard LEFT alignment
             ('LEFTPADDING', (0, 0), (-1, -1), 0),
             ('RIGHTPADDING', (0, 0), (-1, -1), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
@@ -451,20 +477,20 @@ class PGTAReportTemplate:
         
         # Add embryo rows
         for idx, embryo in enumerate(embryos_data, 1):
-            res_sum = embryo.get('result_summary', '')
-            interp = embryo.get('interpretation', '')
+            res_sum = self._clean(embryo.get('result_summary'))
+            interp = self._clean(embryo.get('interpretation'))
             
             # Application of Red/Blue color logic
             res_color = self._get_result_color(res_sum, interp)
             
             # MTcopy: NA for non-euploid
-            mtcopy = embryo.get('mtcopy', 'NA')
+            mtcopy = self._clean(embryo.get('mtcopy'), 'NA')
             if interp.upper() != "EUPLOID":
                 mtcopy = "NA"
             
             data.append([
                 self._wrap_text(str(idx), align='CENTER'),
-                self._wrap_text(embryo.get('embryo_id', ''), align='CENTER'),
+                self._wrap_text(self._clean(embryo.get('embryo_id')), align='CENTER'),
                 # Color only, no bold as per latest request
                 self._wrap_text(self._wrap_colored(res_sum, res_color, bold=False), align='CENTER'),
                 self._wrap_text(mtcopy, align='CENTER'),
@@ -486,10 +512,6 @@ class PGTAReportTemplate:
             # GRID updated: horizontal lines only (remove internal vertical lines)
             ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor(self.COLORS['patient_info_bg'])),
             ('LINEBELOW', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('LINEABOVE', (0, 0), (-1, 0), 0.5, colors.black),
-            ('LINEBEFORE', (0, 0), (0, -1), 0.5, colors.black),
-            ('LINEAFTER', (-1, 0), (-1, -1), 0.5, colors.black),
-            ('LINEAFTER', (-1, 0), (-1, -1), 0.5, colors.black),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             # Explicitly ensure center alignment matching request for ALL data cells including S.No
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
@@ -557,24 +579,33 @@ class PGTAReportTemplate:
         elements.append(title)
         elements.append(Spacer(1, 8))
         
-        # Patient info line in a table as in source
-        # Using 6-column grid logic from cover page to handle long names
+        # Prepare info data with sanitation
         info_data = [[
             self._wrap_text('<b>Patient name</b>', True),
             self._wrap_text(':'),
-            self._wrap_text(f"<b>{patient_data.get('patient_name', '')} {patient_data.get('spouse_name', '')}</b>"),
+            self._wrap_text(f"<b>{self._clean(patient_data.get('patient_name'))}</b>"),
             self._wrap_text('<b>PIN</b>', True),
             self._wrap_text(':'),
-            self._wrap_text(f"<b>{patient_data.get('pin', '')}</b>")
+            self._wrap_text(f"<b>{self._clean(patient_data.get('pin'))}</b>")
+        ],
+        [
+            self._wrap_text(''),
+            self._wrap_text(''),
+            self._wrap_text(f"<b>{self._clean(patient_data.get('spouse_name'))}</b>"),
+            self._wrap_text(''),
+            self._wrap_text(''),
+            self._wrap_text('')
         ]]
         
-        # Optimized widths for detailed banner [Total: 496pt] - Expanded for full layout
-        info_table = Table(info_data, colWidths=[98, 8, 137, 98, 8, 141], hAlign='LEFT')
+        # Optimized widths for detailed banner [Total: 490pt]
+        info_table = Table(info_data, colWidths=[85, 12, 146, 85, 12, 150], hAlign='LEFT')
         info_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(self.COLORS['patient_info_bg'])),
             ('FONTNAME', (0, 0), (-1, -1), self._get_font('SegoeUI-Bold', 'Helvetica-Bold')),
             ('FONTSIZE', (0, 0), (-1, -1), 10),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('ALIGN', (0, 0), (0, -1), 'RIGHT'), # Shift near colon
+            ('ALIGN', (3, 0), (3, -1), 'RIGHT'), # Shift near colon
             ('LEFTPADDING', (0, 0), (-1, -1), 0), # Remove padding to fix spacing
             ('RIGHTPADDING', (0, 0), (-1, -1), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 4),
@@ -590,6 +621,8 @@ class PGTAReportTemplate:
         )
         disclaimer_table = Table([[disclaimer]], colWidths=[490], hAlign='CENTER')
         disclaimer_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(self.COLORS['grey_bg'])),
             ('TOPPADDING', (0, 0), (-1, -1), 6),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
@@ -597,10 +630,10 @@ class PGTAReportTemplate:
         elements.append(KeepTogether(disclaimer_table))
         elements.append(Spacer(1, 12))
         
-        # Application of Red/Blue color logic
-        res_text = embryo_data.get('result_description', '')
-        autosomes_text = embryo_data.get('autosomes', '')
-        interp_text = embryo_data.get('interpretation', '')
+        # Application of Red/Blue color logic with sanitation
+        res_text = self._clean(embryo_data.get('result_description'))
+        autosomes_text = self._clean(embryo_data.get('autosomes'))
+        interp_text = self._clean(embryo_data.get('interpretation'))
         
         # Color based on interpretation for interpretation field
         # Color based on keywords for autosomes field
@@ -608,7 +641,7 @@ class PGTAReportTemplate:
         auto_color = self._get_result_color(autosomes_text, '')
         
         # MTcopy: NA for non-euploid
-        mtcopy = embryo_data.get('mtcopy', 'NA')
+        mtcopy = self._clean(embryo_data.get('mtcopy'), 'NA')
         if interp_text.upper() != "EUPLOID":
             mtcopy = "NA"
             
@@ -622,13 +655,12 @@ class PGTAReportTemplate:
             fontName=self._get_font('GillSansMT-Bold', 'Helvetica-Bold'),
             textColor=colors.HexColor(self.COLORS['blue_title'])
         )
-        elements.append(Paragraph(f"<b>EMBRYO: {embryo_data.get('embryo_id', '')}</b>", embryo_id_style))
+        elements.append(Paragraph(f"<b>EMBRYO: {self._clean(embryo_data.get('embryo_id'))}</b>", embryo_id_style))
         elements.append(Spacer(1, 6))
         
         detail_data = [
             [self._wrap_text(f"<b>Result:</b> {self._wrap_colored(res_text, colors.black, bold=False)}", False)],
             [self._wrap_text(f"<b>Autosomes:</b> {self._wrap_colored(autosomes_text, auto_color, bold=False)}", False)],
-            [self._wrap_text(f"<b>Sex chromosomes:</b> {embryo_data.get('sex_chromosomes', '')}", False)],
             [self._wrap_text(f"<b>Interpretation:</b> {self._wrap_colored(interp_text, interp_color, bold=False)}", False)],
             [self._wrap_text(f"<b>MTcopy:</b> {mtcopy}", False)]
         ]
@@ -762,34 +794,34 @@ class PGTAReportTemplate:
         # Exact source vertical gap (12.7pt from text baseline to image top)
         elements.append(Spacer(1, 12.7))
         
-        # Signatures - use Base64 by default for foolproof rendering
+        # Individual Base64 images for signatures as requested
         try:
-            img_data = base64.b64decode(SIGNS_IMAGE_B64)
-            img_w = 395
-            img_h = 42
-            img = Image(BytesIO(img_data), width=img_w, height=img_h)
-            img.hAlign = 'CENTER'
-            elements.append(img)
-        except Exception as e:
-            print(f"Error drawing Base64 signatures: {e}")
-            # Fallback to file if somehow Base64 fails
-            if 'signs_image_path' in data and data['signs_image_path'] and os.path.exists(data['signs_image_path']):
-                try:
-                    img = Image(data['signs_image_path'], width=380, height=60)
-                    img.hAlign = 'LEFT'
-                    elements.append(img)
-                except:
-                    pass
+            from io import BytesIO
+            def get_sig_img(b64):
+                if not b64: return Paragraph('', self.styles['Normal'])
+                img_data = base64.b64decode(b64)
+                return Image(BytesIO(img_data), width=100, height=40)
 
-        # Names and Titles below signatures - Using SegoeUI Normal weight as in source
-        # Source Centers: 152.1, 307.7, 463.1 (Page Center approx 306)
-        # Using a centered 3-column table with 156pt columns (centers at 78, 234, 390 relative to table)
-        # Table width: 468 (total content width)
+            sig1 = get_sig_img(SIGN_ANAND_B64)
+            sig2 = get_sig_img(SIGN_SACHIN_B64)
+            sig3 = get_sig_img(SIGN_DIRECTOR_B64)
+            
+            sig_img_table = Table([[sig1, sig2, sig3]], colWidths=[156, 156, 156])
+            sig_img_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+            ]))
+            elements.append(sig_img_table)
+        except Exception as e:
+            print(f"Error drawing individual signatures: {e}")
+
+        # Names and Titles below signatures - Using SegoeUI Normal weight
         data = []
         names_row = []
         titles_row = []
         
-        # Use Normal weight for names as identified in source extraction (Bold: False)
         sig_name_style = ParagraphStyle('SigName', parent=self.styles['Normal'], 
                                        fontName=self._get_font('SegoeUI', 'Helvetica'), 
                                        fontSize=11.04, alignment=TA_CENTER)
@@ -803,7 +835,7 @@ class PGTAReportTemplate:
         
         data = [names_row, titles_row]
         
-        # Table width 468, 3 columns of 156
+        # Table width 468 [3 x 156]
         table = Table(data, colWidths=[156, 156, 156])
         table.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
@@ -814,6 +846,8 @@ class PGTAReportTemplate:
             ('LINEBELOW', (0, 0), (-1, -1), 0, colors.white),
             ('LINEBEFORE', (0, 0), (-1, -1), 0, colors.white),
             ('LINEAFTER', (0, 0), (-1, -1), 0, colors.white),
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
         ]))
         
         elements.append(table)

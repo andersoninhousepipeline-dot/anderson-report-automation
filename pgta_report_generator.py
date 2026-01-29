@@ -50,17 +50,18 @@ class PreviewWorker(QThread):
     finished = pyqtSignal(str) # Path to generated PDF
     error = pyqtSignal(str)
     
-    def __init__(self, patient_data, embryos_data, output_path):
+    def __init__(self, patient_data, embryos_data, output_path, show_logo=True):
         super().__init__()
         self.patient_data = patient_data
         self.embryos_data = embryos_data
         self.output_path = output_path
+        self.show_logo = show_logo
         
     def run(self):
         try:
             # Generate PDF using native template
             gen = PGTAReportTemplate(assets_dir="assets/pgta")
-            gen.generate_pdf(self.output_path, self.patient_data, self.embryos_data)
+            gen.generate_pdf(self.output_path, self.patient_data, self.embryos_data, show_logo=self.show_logo)
             self.finished.emit(self.output_path)
         except Exception as e:
             self.error.emit(str(e))
@@ -72,13 +73,14 @@ class ReportGeneratorWorker(QThread):
     finished = pyqtSignal(list, list)
     error = pyqtSignal(str)
     
-    def __init__(self, patient_data_list, output_dir, generate_pdf=True, generate_docx=True, template_type="PGT-A"):
+    def __init__(self, patient_data_list, output_dir, generate_pdf=True, generate_docx=True, template_type="PGT-A", show_logo=True):
         super().__init__()
         self.patient_data_list = patient_data_list
         self.output_dir = output_dir
         self.generate_pdf = generate_pdf
         self.generate_docx = generate_docx
         self.template_type = template_type
+        self.show_logo = show_logo
     
     def run(self):
         """Generate reports"""
@@ -87,7 +89,7 @@ class ReportGeneratorWorker(QThread):
         
         if self.generate_pdf:
             # Revert to pure ReportLab template
-            # In a full ADVAT system, we would select the class based on template_type
+            # In a full PGT-A system, we would select the class based on template_type
             if self.template_type == "PGT-A":
                 pdf_generator = PGTAReportTemplate(assets_dir="assets/pgta")
             else:
@@ -106,9 +108,8 @@ class ReportGeneratorWorker(QThread):
             try:
                 sample_num = patient_data['patient_info'].get('sample_number', f'Sample_{idx}')
                 patient_name = patient_data['patient_info'].get('patient_name', 'Unknown')
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                
-                base_filename = f"{sample_num}_{patient_name.replace(' ', '_')}_{timestamp}"
+                logo_suffix = "_withlogo" if self.show_logo else "_withoutlogo"
+                base_filename = f"{sample_num}_{patient_name.replace(' ', '_')}_{timestamp}{logo_suffix}"
                 
                 self.progress.emit(
                     int((idx - 1) / total * 100),
@@ -124,7 +125,8 @@ class ReportGeneratorWorker(QThread):
                     pdf_generator.generate_pdf(
                         pdf_path,
                         patient_data['patient_info'],
-                        patient_data['embryos']
+                        patient_data['embryos'],
+                        show_logo=self.show_logo
                     )
                 
                 # Generate DOCX
@@ -133,7 +135,8 @@ class ReportGeneratorWorker(QThread):
                     docx_generator.generate_docx(
                         docx_path,
                         patient_data['patient_info'],
-                        patient_data['embryos']
+                        patient_data['embryos'],
+                        show_logo=self.show_logo
                     )
                 
                 success_reports.append(base_filename)
@@ -151,7 +154,7 @@ class PGTAReportGeneratorApp(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.settings = QSettings('ADVAT', 'ReportGenerator')
+        self.settings = QSettings('PGTA', 'ReportGenerator')
         self.current_patient_data = {} # For manual entry
         self.bulk_patient_data_list = [] # For bulk upload
         self.current_embryos = []
@@ -231,7 +234,8 @@ class PGTAReportGeneratorApp(QMainWindow):
             output_dir,
             self.generate_pdf_check.isChecked(),
             self.generate_docx_check.isChecked(),
-            template_type=self.template_combo.currentText()
+            template_type=self.template_combo.currentText(),
+            show_logo=(self.logo_combo.currentText() == "With Logo")
         )
         
         self.worker.progress.connect(self.update_progress)
@@ -242,7 +246,7 @@ class PGTAReportGeneratorApp(QMainWindow):
     
     def init_ui(self):
         """Initialize user interface"""
-        self.setWindowTitle("ADVAT Report Generator")
+        self.setWindowTitle("PGT-A Report Generator")
         self.setGeometry(100, 100, 1200, 800)
         
         # Set Application Icon
@@ -262,7 +266,7 @@ class PGTAReportGeneratorApp(QMainWindow):
         header_layout = QHBoxLayout()
         
         # Title
-        title_label = QLabel("ADVAT Report Generator")
+        title_label = QLabel("PGT-A Report Generator")
         title_label.setStyleSheet("font-size: 24px; font-weight: bold; padding: 10px;")
         title_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         header_layout.addWidget(title_label)
@@ -478,6 +482,15 @@ class PGTAReportGeneratorApp(QMainWindow):
         action_row.addWidget(QLabel("Output Forms:"))
         action_row.addWidget(self.generate_pdf_check)
         action_row.addWidget(self.generate_docx_check)
+        
+        # Logo Preference
+        action_row.addSpacing(20)
+        action_row.addWidget(QLabel("Branding:"))
+        self.logo_combo = QComboBox()
+        self.logo_combo.addItems(["With Logo", "Without Logo"])
+        self.logo_combo.currentIndexChanged.connect(self.update_preview)
+        action_row.addWidget(self.logo_combo)
+        
         action_row.addStretch()
         action_row.addWidget(self.generate_btn)
         gen_layout.addLayout(action_row)
@@ -637,7 +650,6 @@ class PGTAReportGeneratorApp(QMainWindow):
                     'interpretation': interp,
                     'result_description': result_desc,
                     'autosomes': autosomes,
-                    'sex_chromosomes': sex,
                     'mtcopy': mtcopy,
                     'cnv_image_path': img_path,
                     'chromosome_statuses': chr_statuses,
@@ -658,7 +670,8 @@ class PGTAReportGeneratorApp(QMainWindow):
         if hasattr(self, 'preview_worker') and self.preview_worker.isRunning():
             return # Skip if already running (debounce handles most, but safety check)
             
-        self.preview_worker = PreviewWorker(p_data, e_data, temp_pdf)
+        show_logo = self.logo_combo.currentText() == "With Logo"
+        self.preview_worker = PreviewWorker(p_data, e_data, temp_pdf, show_logo=show_logo)
         self.preview_worker.finished.connect(self.on_preview_generated)
         self.preview_worker.start()
 
@@ -865,6 +878,15 @@ class PGTAReportGeneratorApp(QMainWindow):
         draft_layout.addWidget(load_draft_btn)
         left_layout.addLayout(draft_layout)
         
+        # Logo selection for bulk
+        logo_layout = QHBoxLayout()
+        logo_layout.addWidget(QLabel("Branding:"))
+        self.bulk_logo_combo = QComboBox()
+        self.bulk_logo_combo.addItems(["With Logo", "Without Logo"])
+        self.bulk_logo_combo.currentIndexChanged.connect(self.update_batch_preview)
+        logo_layout.addWidget(self.bulk_logo_combo)
+        left_layout.addLayout(logo_layout)
+        
         generate_all_btn = QPushButton("Generate All Reports")
         generate_all_btn.clicked.connect(self.generate_all_batch_reports)
         left_layout.addWidget(generate_all_btn)
@@ -1013,7 +1035,7 @@ class PGTAReportGeneratorApp(QMainWindow):
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>ADVAT Report Generator Guide</h1>
+                    <h1>PGT-A Report Generator Guide</h1>
                     <p>Efficient Clinical Reporting Suite</p>
                 </div>
 
@@ -1052,7 +1074,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                 </div>
                 
                 <p style="text-align: center; color: #888; margin-top: 40px; font-size: 12px;">
-                    ADVAT Clinical Reporting Suite | Technical Support Available
+                    PGT-A Clinical Reporting Suite | Technical Support Available
                 </p>
             </div>
         </body>
@@ -1362,22 +1384,27 @@ class PGTAReportGeneratorApp(QMainWindow):
 
         
     def get_manual_data_dict(self):
-        """Collect current manual entry data into a dictionary"""
+        """Collect current manual entry data into a dictionary with 'nan' sanitation"""
+        def clean(val):
+            if val is None: return ""
+            s = str(val).strip()
+            return "" if s.lower() == "nan" else s
+
         patient_info = {
-            'patient_name': self.patient_name_input.text(),
-            'spouse_name': self.spouse_name_input.text(),
-            'pin': self.pin_input.text(),
-            'age': self.age_input.text(),
-            'sample_number': self.sample_number_input.text(),
-            'referring_clinician': self.referring_clinician_input.text(),
-            'biopsy_date': self.biopsy_date_input.text(),
-            'hospital_clinic': self.hospital_clinic_input.text(),
-            'sample_collection_date': self.sample_collection_date_input.text(),
-            'specimen': self.specimen_input.text(),
-            'sample_receipt_date': self.sample_receipt_date_input.text(),
-            'biopsy_performed_by': self.biopsy_performed_by_input.text(),
-            'report_date': self.report_date_input.text(),
-            'indication': self.indication_input.toPlainText()
+            'patient_name': clean(self.patient_name_input.text()),
+            'spouse_name': clean(self.spouse_name_input.text()),
+            'pin': clean(self.pin_input.text()),
+            'age': clean(self.age_input.text()),
+            'sample_number': clean(self.sample_number_input.text()),
+            'referring_clinician': clean(self.referring_clinician_input.text()),
+            'biopsy_date': clean(self.biopsy_date_input.text()),
+            'hospital_clinic': clean(self.hospital_clinic_input.text()),
+            'sample_collection_date': clean(self.sample_collection_date_input.text()),
+            'specimen': clean(self.specimen_input.text()),
+            'sample_receipt_date': clean(self.sample_receipt_date_input.text()),
+            'biopsy_performed_by': clean(self.biopsy_performed_by_input.text()),
+            'report_date': clean(self.report_date_input.text()),
+            'indication': clean(self.indication_input.toPlainText())
         }
         
         embryos = []
@@ -1441,7 +1468,6 @@ class PGTAReportGeneratorApp(QMainWindow):
                 'mtcopy': t_mt,
                 'result_description': result_desc,
                 'autosomes': autosomes,
-                'sex_chromosomes': sex,
                 'cnv_image_path': cnv_image_path,
                 'chromosome_statuses': chr_statuses,
                 'mosaic_percentages': mosaic_percentages
@@ -1760,7 +1786,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                 }
                 
                 # Find matching embryos
-                norm_p_name = p_name.replace(' ', '').upper()
+                norm_p_name = p_name.split('(' )[0].translate(str.maketrans('', '', ' -')).upper()
                 embryos = []
                 
                 for _, s_row in df_summary.iterrows():
@@ -1809,7 +1835,6 @@ class PGTAReportGeneratorApp(QMainWindow):
                             'interpretation': interp,
                             'result_description': conclusion,
                             'autosomes': conclusion,
-                            'sex_chromosomes': str(s_row.get('GENDER', 'Normal')),
                             'mtcopy': str(s_row.get('MTcopy', 'NA')),
                             'cnv_image_path': cnv_image_path,
                             'chromosome_statuses': chr_statuses,
@@ -1959,6 +1984,56 @@ class PGTAReportGeneratorApp(QMainWindow):
             image_widget = QWidget()
             image_widget.setLayout(image_layout)
             embryo_form.addRow("CNV Image:", image_widget)
+
+            # Chromosome status section using Grid (Same as manual form)
+            chr_group = QGroupBox("Chromosome Details")
+            chr_grid = QGridLayout()
+            chr_group.setLayout(chr_grid)
+            embryo_form.addRow(chr_group)
+        
+            # Headers
+            chr_grid.addWidget(QLabel("<b>Chr</b>"), 0, 0)
+            chr_grid.addWidget(QLabel("<b>Status</b>"), 0, 1)
+            chr_grid.addWidget(QLabel("<b>Mosaic %</b>"), 0, 2)
+            chr_grid.addWidget(QLabel("   "), 0, 3) # Spacer
+            chr_grid.addWidget(QLabel("<b>Chr</b>"), 0, 4)
+            chr_grid.addWidget(QLabel("<b>Status</b>"), 0, 5)
+            chr_grid.addWidget(QLabel("<b>Mosaic %</b>"), 0, 6)
+        
+            chr_inputs = {}
+            chr_statuses = embryo.get('chromosome_statuses', {})
+            mosaic_percentages = embryo.get('mosaic_percentages', {})
+        
+            for j in range(1, 23):
+                # Determine column (Left: 1-11, Right: 12-22)
+                if j <= 11:
+                    row = j
+                    col_base = 0
+                else:
+                    row = j - 11
+                    col_base = 4
+                
+                s_j = str(j)
+                
+                # Label
+                chr_grid.addWidget(QLabel(s_j), row, col_base)
+                
+                # Status Combo
+                chr_combo = QComboBox()
+                chr_combo.addItems(["N", "G", "L", "SG", "SL", "M", "MG", "ML", "SMG", "SML"])
+                chr_combo.setCurrentText(chr_statuses.get(s_j, 'N'))
+                chr_combo.currentTextChanged.connect(self.update_batch_preview)
+                chr_grid.addWidget(chr_combo, row, col_base + 1)
+                
+                # Mosaic Input
+                mos_input = QLineEdit()
+                mos_input.setPlaceholderText("%")
+                mos_input.setText(str(mosaic_percentages.get(s_j, '')))
+                mos_input.setMaximumWidth(60)
+                mos_input.textChanged.connect(self.update_batch_preview)
+                chr_grid.addWidget(mos_input, row, col_base + 2)
+                
+                chr_inputs[s_j] = {'status': chr_combo, 'mosaic': mos_input}
         
             embryos_layout.addWidget(embryo_frame)
         
@@ -1971,7 +2046,8 @@ class PGTAReportGeneratorApp(QMainWindow):
                 'interpretation': e_interp,
                 'mtcopy': e_mtcopy,
                 'image_label': e_image_label,
-                'image_path': e_image_path
+                'image_path': e_image_path,
+                'chr_inputs': chr_inputs
             })
     
         self.batch_editor_layout.addWidget(embryos_group)
@@ -2006,28 +2082,33 @@ class PGTAReportGeneratorApp(QMainWindow):
         self.update_batch_preview()
 
     def save_batch_edits(self):
-        """Save edits from batch editor back to data list - ALL FIELDS"""
+        """Save edits from batch editor back to data list with 'nan' sanitation"""
         if not hasattr(self, 'current_batch_index'):
             return
-    
+            
+        def clean(val):
+            if val is None: return ""
+            s = str(val).strip()
+            return "" if s.lower() == "nan" else s
+
         idx = self.current_batch_index
         data = self.bulk_patient_data_list[idx]
     
         # Update ALL patient info fields
-        data['patient_info']['patient_name'] = self.batch_patient_name.text()
-        data['patient_info']['spouse_name'] = self.batch_spouse_name.text()
-        data['patient_info']['pin'] = self.batch_pin.text()
-        data['patient_info']['age'] = self.batch_age.text()
-        data['patient_info']['sample_number'] = self.batch_sample_number.text()
-        data['patient_info']['referring_clinician'] = self.batch_referring_clinician.text()
-        data['patient_info']['biopsy_date'] = self.batch_biopsy_date.text()
-        data['patient_info']['hospital_clinic'] = self.batch_hospital.text()
-        data['patient_info']['sample_collection_date'] = self.batch_sample_collection_date.text()
-        data['patient_info']['specimen'] = self.batch_specimen.text()
-        data['patient_info']['sample_receipt_date'] = self.batch_sample_receipt_date.text()
-        data['patient_info']['biopsy_performed_by'] = self.batch_biopsy_performed_by.text()
-        data['patient_info']['report_date'] = self.batch_report_date.text()
-        data['patient_info']['indication'] = self.batch_indication.toPlainText()
+        data['patient_info']['patient_name'] = clean(self.batch_patient_name.text())
+        data['patient_info']['spouse_name'] = clean(self.batch_spouse_name.text())
+        data['patient_info']['pin'] = clean(self.batch_pin.text())
+        data['patient_info']['age'] = clean(self.batch_age.text())
+        data['patient_info']['sample_number'] = clean(self.batch_sample_number.text())
+        data['patient_info']['referring_clinician'] = clean(self.batch_referring_clinician.text())
+        data['patient_info']['biopsy_date'] = clean(self.batch_biopsy_date.text())
+        data['patient_info']['hospital_clinic'] = clean(self.batch_hospital.text())
+        data['patient_info']['sample_collection_date'] = clean(self.batch_sample_collection_date.text())
+        data['patient_info']['specimen'] = clean(self.batch_specimen.text())
+        data['patient_info']['sample_receipt_date'] = clean(self.batch_sample_receipt_date.text())
+        data['patient_info']['biopsy_performed_by'] = clean(self.batch_biopsy_performed_by.text())
+        data['patient_info']['report_date'] = clean(self.batch_report_date.text())
+        data['patient_info']['indication'] = clean(self.batch_indication.toPlainText())
     
         # Update ALL embryo fields
         for i, editor in enumerate(self.batch_embryo_editors):
@@ -2040,6 +2121,12 @@ class PGTAReportGeneratorApp(QMainWindow):
                 data['embryos'][i]['interpretation'] = editor['interpretation'].currentText()
                 data['embryos'][i]['mtcopy'] = editor['mtcopy'].text()
                 data['embryos'][i]['cnv_image_path'] = editor['image_path']
+                
+                # Update chromosome data
+                if 'chr_inputs' in editor:
+                    for ch, inputs in editor['chr_inputs'].items():
+                        data['embryos'][i]['chromosome_statuses'][ch] = inputs['status'].currentText()
+                        data['embryos'][i]['mosaic_percentages'][ch] = inputs['mosaic'].text()
     
         self.statusBar().showMessage("Changes saved to batch")
         QMessageBox.information(self, "Saved", "Changes saved successfully!")
@@ -2139,7 +2226,8 @@ class PGTAReportGeneratorApp(QMainWindow):
                 'sex_chromosomes': editor['sex_chromosomes'].text(),
                 'mtcopy': editor['mtcopy'].text(),
                 'cnv_image_path': editor['image_path'],
-                'chromosome_statuses': {str(i): 'N' for i in range(1, 23)} # Defaulting for preview
+                'chromosome_statuses': {ch: inp['status'].currentText() for ch, inp in editor.get('chr_inputs', {}).items()},
+                'mosaic_percentages': {ch: inp['mosaic'].text() for ch, inp in editor.get('chr_inputs', {}).items()}
             })
 
         import tempfile
@@ -2149,7 +2237,8 @@ class PGTAReportGeneratorApp(QMainWindow):
         if hasattr(self, 'batch_preview_worker') and self.batch_preview_worker.isRunning():
             return
             
-        self.batch_preview_worker = PreviewWorker(p_data, e_data, temp_pdf)
+        show_logo = self.bulk_logo_combo.currentText() == "With Logo"
+        self.batch_preview_worker = PreviewWorker(p_data, e_data, temp_pdf, show_logo=show_logo)
         self.batch_preview_worker.finished.connect(lambda path: self.on_batch_preview_generated(path))
         self.batch_preview_worker.start()
 
@@ -2164,24 +2253,36 @@ class PGTAReportGeneratorApp(QMainWindow):
         if not hasattr(self, 'current_batch_index'):
             return
     
-        # Save current edits first
-        self.save_batch_edits()
+        # Save current edits first - wrapped in try cache to prevent crash on partial data
+        try:
+            self.save_batch_edits()
+        except Exception as e:
+            QMessageBox.warning(self, "Save Error", f"Could not save current edits before preview: {e}")
+            return
     
         idx = self.current_batch_index
         data = self.bulk_patient_data_list[idx]
     
         # Generate temp PDF
         import tempfile
+        import shutil
         temp_dir = tempfile.mkdtemp()
         temp_pdf = os.path.join(temp_dir, "preview.pdf")
     
         try:
             template = PGTAReportTemplate(assets_dir="assets/pgta")
-            template.generate_pdf(temp_pdf, data['patient_info'], data['embryos'])
+            # Check for show_logo preference, default to True if combo not found
+            show_logo = True
+            if hasattr(self, 'bulk_logo_combo'):
+                show_logo = self.bulk_logo_combo.currentText() == "With Logo"
+                
+            template.generate_pdf(temp_pdf, data['patient_info'], data['embryos'], show_logo=show_logo)
         
             # Show in PDF viewer dialog
             self.show_pdf_preview(temp_pdf, data['patient_info']['patient_name'])
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             QMessageBox.critical(self, "Preview Error", f"Failed to generate preview:\\n{str(e)}")
 
     def show_pdf_preview(self, pdf_path, patient_name):
@@ -2235,19 +2336,21 @@ class PGTAReportGeneratorApp(QMainWindow):
     
         try:
             template = PGTAReportTemplate(assets_dir="assets/pgta")
+            show_logo = self.bulk_logo_combo.currentText() == "With Logo"
+            logo_suffix = "_withlogo" if show_logo else "_withoutlogo"
             p_name = data['patient_info']['patient_name'].replace(' ', '_')
             
             # Generate both PDF and DOCX if requested in settings
             if self.generate_pdf_check.isChecked():
-                pdf_path = os.path.join(output_dir, f"{p_name}_PGTA_Report.pdf")
-                template.generate_pdf(pdf_path, data['patient_info'], data['embryos'])
+                pdf_path = os.path.join(output_dir, f"{p_name}_PGTA_Report{logo_suffix}.pdf")
+                template.generate_pdf(pdf_path, data['patient_info'], data['embryos'], show_logo=show_logo)
                 self.statusBar().showMessage(f"Generated PDF for {data['patient_info']['patient_name']}")
                 
             if self.generate_docx_check.isChecked():
                 from pgta_docx_generator import PGTADocxGenerator
                 docx_gen = PGTADocxGenerator(assets_dir="assets/pgta")
-                docx_path = os.path.join(output_dir, f"{p_name}_PGTA_Report.docx")
-                docx_gen.generate_docx(docx_path, data['patient_info'], data['embryos'])
+                docx_path = os.path.join(output_dir, f"{p_name}_PGTA_Report{logo_suffix}.docx")
+                docx_gen.generate_docx(docx_path, data['patient_info'], data['embryos'], show_logo=show_logo)
                 self.statusBar().showMessage(f"Generated DOCX for {data['patient_info']['patient_name']}")
         
             QMessageBox.information(self, "Success", f"Reports generated for {data['patient_info']['patient_name']}")
@@ -2312,7 +2415,8 @@ class PGTAReportGeneratorApp(QMainWindow):
             output_dir,
             self.generate_pdf_check.isChecked(),
             self.generate_docx_check.isChecked(),
-            "PGT-A"
+            "PGT-A",
+            show_logo=(self.bulk_logo_combo.currentText() == "With Logo")
         )
     
         self.worker.progress.connect(self.update_progress)
@@ -2321,7 +2425,7 @@ class PGTAReportGeneratorApp(QMainWindow):
         self.worker.start()
 
     def load_bulk_data(self):
-        """Load data from bulk file"""
+        """Load data from bulk file with robust extraction logic"""
         file_path = self.bulk_file_label.text()
         
         if file_path == "No file selected":
@@ -2329,102 +2433,114 @@ class PGTAReportGeneratorApp(QMainWindow):
             return
         
         try:
-            # Load file
+            # Helper to find column regardless of case/space
+            def get_col_name(df, possible_names):
+                cols = [c.strip().lower() for c in df.columns]
+                for name in possible_names:
+                    n = name.strip().lower()
+                    if n in cols:
+                        return df.columns[cols.index(n)]
+                return None
+
+            # Helper to clean value (remove nan, strip)
+            def clean_val(val, default=""):
+                if pd.isna(val) or str(val).lower().strip() == "nan":
+                    return default
+                return str(val).strip()
+
+            # Load file forcing ALL as string to preserve leading zeros
             if file_path.endswith(('.xlsx', '.xls')):
-                df = pd.read_excel(file_path)
+                df = pd.read_excel(file_path, dtype=str)
             else:
-                df = pd.read_csv(file_path, sep='\t' if file_path.endswith('.tsv') else ',')
+                df = pd.read_csv(file_path, sep='\t' if file_path.endswith('.tsv') else ',', dtype=str)
             
-            # clean column names (strip whitespace)
-            df.columns = [c.strip() for c in df.columns]
+            # Pre-fill all NaN cells to avoid grouping issues
+            df = df.fillna("")
             
-            # Required columns check
-            required_cols = ['Sample_Number', 'Patient_Name', 'Embryo_ID']
-            if not all(col in df.columns for col in required_cols):
-                missing = [col for col in required_cols if col not in df.columns]
-                raise ValueError(f"Missing required columns: {', '.join(missing)}")
+            # Find key columns
+            c_sample = get_col_name(df, ['Sample_Number', 'Sample Number', 'SampleID', 'Sample_ID'])
+            c_patient = get_col_name(df, ['Patient_Name', 'Patient Name', 'Patient'])
+            c_embryo = get_col_name(df, ['Embryo_ID', 'Embryo ID', 'Embryo'])
             
-            # Group by Sample Number to handle multiple embryos per patient
-            grouped = df.groupby('Sample_Number')
-            
+            if not c_sample or not c_patient:
+                raise ValueError(f"Missing required columns (Sample Number, Patient Name). Found: {', '.join(df.columns)}")
+
+            # Group by Sample Number
+            grouped = df.groupby(c_sample)
             self.bulk_patient_data_list = []
             
             for sample_num, group in grouped:
-                # Deduplicate embryos by ID within this patient
-                group = group.drop_duplicates(subset=['Embryo_ID'])
-                
-                # Patient info from first row
                 first_row = group.iloc[0]
+                
+                # Full patient info mapping
                 patient_info = {
-                    'patient_name': str(first_row.get('Patient_Name', '')),
-                    'patient_spouse': str(first_row.get('Patient_Name', '')), # Fallback
-                    'spouse_name': str(first_row.get('Spouse_Name', '')),
-                    'pin': str(first_row.get('PIN', '')),
-                    'age': str(first_row.get('Age', '')),
-                    'sample_number': str(sample_num),
-                    'referring_clinician': str(first_row.get('Referring_Clinician', '')),
-                    'biopsy_date': str(first_row.get('Biopsy_Date', '')),
-                    'hospital_clinic': str(first_row.get('Hospital_Clinic', '')),
-                    'sample_collection_date': str(first_row.get('Sample_Collection_Date', '')),
-                    'specimen': str(first_row.get('Specimen', '')),
-                    'sample_receipt_date': str(first_row.get('Sample_Receipt_Date', '')),
-                    'biopsy_performed_by': str(first_row.get('Biopsy_Performed_By', '')),
-                    'report_date': str(first_row.get('Report_Date', '')),
-                    'indication': str(first_row.get('Indication', ''))
+                    'patient_name': clean_val(first_row.get(get_col_name(df, ['Patient_Name', 'Patient Name']))),
+                    'spouse_name': clean_val(first_row.get(get_col_name(df, ['Spouse_Name', 'Spouse Name']))),
+                    'pin': clean_val(first_row.get(get_col_name(df, ['PIN']))),
+                    'age': clean_val(first_row.get(get_col_name(df, ['Age']))),
+                    'sample_number': clean_val(sample_num),
+                    'referring_clinician': clean_val(first_row.get(get_col_name(df, ['Referring_Clinician', 'Referring Clinician', 'Clinician']))),
+                    'biopsy_date': clean_val(first_row.get(get_col_name(df, ['Biopsy_Date', 'Biopsy Date']))),
+                    'hospital_clinic': clean_val(first_row.get(get_col_name(df, ['Hospital_Clinic', 'Hospital/Clinic', 'Hospital']))),
+                    'sample_collection_date': clean_val(first_row.get(get_col_name(df, ['Sample_Collection_Date', 'Sample Collection Date']))),
+                    'specimen': clean_val(first_row.get(get_col_name(df, ['Specimen'])), "Day 6 Trophectoderm Biopsy"),
+                    'sample_receipt_date': clean_val(first_row.get(get_col_name(df, ['Sample_Receipt_Date', 'Sample Receipt Date']))),
+                    'biopsy_performed_by': clean_val(first_row.get(get_col_name(df, ['Biopsy_Performed_By', 'Biopsy Performed By']))),
+                    'report_date': clean_val(first_row.get(get_col_name(df, ['Report_Date', 'Report Date'])), datetime.now().strftime("%d-%m-%Y")),
+                    'indication': clean_val(first_row.get(get_col_name(df, ['Indication'])))
                 }
                 
-                # Embryos
                 embryos = []
                 for _, row in group.iterrows():
-                    embryo_id = str(row.get('Embryo_ID', ''))
+                    embryo_id = clean_val(row.get(c_embryo))
                     
-                    # Look up assigned image
+                    # Image matching
                     cnv_image_path = None
                     if embryo_id in self.uploaded_images and self.uploaded_images[embryo_id]:
                         cnv_image_path = self.uploaded_images[embryo_id][0]
                     
-                    # Parse chromosome statuses (N, G, L, etc.)
-                    # Assumes columns like '1', '2'... or a 'Autosomes' text
-                    # The template has specific columns? The template code I wrote earlier didn't create 1-22 columns.
-                    # It had 'Autosomes', 'Sex_Chromosomes'.
-                    # I should probably robustly handle this.
-                    # For now, let's assume default 'N' if not specified, or parse from 'Autosomes' text?
-                    # The user's prompt implied a rigorous report.
-                    # Let's check the QuickStart guide I wrote: "Chromosome statuses (1-22): Select..."
-                    # But the excel template creation only had 'Autosomes' (summary).
-                    # I should update the template creator to include 1-22 columns if we want detailed control.
-                    # For now, I'll default to 'N' for bulk, or look for columns '1', '2' etc. if they exist.
-                    
+                    # Chromosome statuses (1-22) and Mosaics
                     chr_statuses = {}
+                    mosaic_percentages = {}
+                    
                     for i in range(1, 23):
-                        col_name = str(i)
-                        status = 'N'
-                        if col_name in df.columns:
-                            status = str(row[col_name])
-                        chr_statuses[str(i)] = status
+                        s_i = str(i)
+                        # Status
+                        c_status = get_col_name(df, [s_i])
+                        chr_statuses[s_i] = clean_val(row.get(c_status) if c_status else None, 'N')
+                        
+                        # Mosaic
+                        c_mosaic = get_col_name(df, [f"{s_i}_Mosaic", f"{s_i} Mosaic", f"Chr{s_i}_Mosaic"])
+                        mos_val = clean_val(row.get(c_mosaic) if c_mosaic else None)
+                        if mos_val:
+                            mosaic_percentages[s_i] = mos_val
 
-                    embryo = {
+                    embryos.append({
                         'embryo_id': embryo_id,
                         'cnv_image_path': cnv_image_path,
-                        'result_summary': str(row.get('Result_Summary', '')),
-                        'result_description': str(row.get('Result_Description', '')),
-                        'autosomes': str(row.get('Autosomes', '')),
-                        'sex_chromosomes': str(row.get('Sex_Chromosomes', '')),
-                        'interpretation': str(row.get('Interpretation', '')),
-                        'mtcopy': str(row.get('MTcopy', 'NA')),
+                        'result_summary': clean_val(row.get(get_col_name(df, ['Result_Summary', 'Result Summary', 'Result']))),
+                        'result_description': clean_val(row.get(get_col_name(df, ['Result_Description', 'Result Description', 'Conclusion']))),
+                        'autosomes': clean_val(row.get(get_col_name(df, ['Autosomes']))),
+                        'sex_chromosomes': clean_val(row.get(get_col_name(df, ['Sex_Chromosomes', 'Sex Chromosomes', 'Sex'])), "Normal"),
+                        'interpretation': clean_val(row.get(get_col_name(df, ['Interpretation']))),
+                        'mtcopy': clean_val(row.get(get_col_name(df, ['MTcopy', 'MT copy'])), 'NA'),
                         'chromosome_statuses': chr_statuses,
-                        'mosaic_percentages': {}
-                    }
-                    embryos.append(embryo)
+                        'mosaic_percentages': mosaic_percentages
+                    })
                 
                 self.bulk_patient_data_list.append({'patient_info': patient_info, 'embryos': embryos})
             
-            QMessageBox.information(self, "Success", f"Loaded data for {len(self.bulk_patient_data_list)} patients")
-            self.statusBar().showMessage(f"Bulk data loaded: {len(self.bulk_patient_data_list)} patients")
-            self.update_data_summary() # Update summary to reflect bulk data
+            # Final stats for confirmation
+            total_embryos = sum(len(p['embryos']) for p in self.bulk_patient_data_list)
+            QMessageBox.information(self, "Success", f"Loaded {len(self.bulk_patient_data_list)} patients with {total_embryos} embryos in total.")
+            self.statusBar().showMessage(f"Bulk data loaded: {total_embryos} samples found.")
+            self.update_data_summary() 
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             QMessageBox.critical(self, "Error", f"Failed to load data: {str(e)}")
+            
     
     
     def add_images_with_embryo_id(self):

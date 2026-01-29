@@ -1,7 +1,7 @@
 @echo off
-TITLE ADVAT Report Generator
+TITLE PGT-A Report Generator
 echo ===================================
-echo ADVAT Report Generator (Windows)
+echo PGT-A Report Generator (Windows)
 echo ===================================
 echo.
 
@@ -61,7 +61,7 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo Starting ADVAT Report Generator...
+echo Starting PGT-A Report Generator...
 echo.
 python pgta_report_generator.py 2>run_error.log
 

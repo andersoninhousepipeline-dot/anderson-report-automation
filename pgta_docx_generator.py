@@ -92,6 +92,11 @@ class PGTADocxGenerator:
         self.genqa_logo = os.path.join(self.assets_dir, "genqa_logo.png")
         self.signs_image = os.path.join(self.assets_dir, "signs.png")
         
+        # Individual signature files
+        self.sign_anand = os.path.join(self.assets_dir, "sign-new", "anand-babu-sign.png")
+        self.sign_sachin = os.path.join(self.assets_dir, "sign-new", "sachin-sign.png")
+        self.sign_director = os.path.join(self.assets_dir, "sign-new", "director-sign.png")
+        
         for label, path in [("DOCX_Logo", self.header_logo), ("DOCX_Signs", self.signs_image)]:
              if not os.path.exists(path):
                  print(f"WARNING DOCX: {label} not found at {path}")
@@ -100,6 +105,13 @@ class PGTADocxGenerator:
         """Set background shading for a table cell"""
         shading_elm = OxmlElement('w:shd')
         shading_elm.set(qn('w:fill'), fill)
+    def _clean(self, val, default=""):
+        """Sanitize value to remove nan and trim whitespace"""
+        if val is None: return default
+        s = str(val).strip()
+        if s.lower() == "nan": return default
+        return s
+
         cell._tc.get_or_add_tcPr().append(shading_elm)
     
     def _add_branding(self, doc):
@@ -115,8 +127,15 @@ class PGTADocxGenerator:
         # a way to access these streams.
         pass
 
-    def generate_docx(self, output_path, patient_data, embryos_data):
-        """Generate DOCX report"""
+    def generate_docx(self, output_path, patient_data, embryos_data, show_logo=True):
+        """
+        Generate DOCX report
+        Args:
+            output_path: Path to save DOCX
+            patient_data: Patient info dict
+            embryos_data: List of embryo dicts
+            show_logo: Whether to include header/footer branding
+        """
         doc = Document()
         
         # Set margins
@@ -132,7 +151,7 @@ class PGTADocxGenerator:
         doc.add_page_break()
         
         # Setup headers and footers for all sections
-        self._setup_page_header_footer(doc)
+        self._setup_page_header_footer(doc, show_logo=show_logo)
         
         # Page 2: Methodology
         self._add_methodology_page(doc)
@@ -150,21 +169,21 @@ class PGTADocxGenerator:
         doc.save(output_path)
         return output_path
     
-    def _setup_page_header_footer(self, doc):
-        """Setup repeating headers and footers for all sections using Base64 assets"""
+    def _setup_page_header_footer(self, doc, show_logo=True):
+        """Setup repeating headers and footers for all sections using original image files"""
         for section in doc.sections:
             # Header
             header = section.header
             header_para = header.paragraphs[0]
             header_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             
-            # Use Base64 Header Logo
-            try:
-                header_stream = BytesIO(base64.b64decode(HEADER_LOGO_B64))
-                run = header_para.add_run()
-                run.add_picture(header_stream, width=Inches(6.5))
-            except Exception as e:
-                print(f"Error adding Base64 header to DOCX: {e}")
+            # Use Original Header Logo File if show_logo is True
+            if show_logo and os.path.exists(self.header_logo):
+                try:
+                    run = header_para.add_run()
+                    run.add_picture(self.header_logo, width=Inches(6.5))
+                except Exception as e:
+                    print(f"Error adding header image to DOCX: {e}")
 
             # Footer
             footer = section.footer
@@ -178,16 +197,16 @@ class PGTADocxGenerator:
             footer_table.columns[0].width = Inches(5.5) # Expanded
             footer_table.columns[1].width = Inches(1.0)
             
-            # Add Footer Banner (Base64)
-            try:
-                footer_stream = BytesIO(base64.b64decode(FOOTER_BANNER_B64))
-                para_banner = footer_table.rows[0].cells[0].paragraphs[0]
-                run_banner = para_banner.add_run()
-                run_banner.add_picture(footer_stream, width=Inches(5.5))
-            except Exception as e:
-                 print(f"Error adding Base64 footer banner to DOCX: {e}")
+            # Add Original Footer Banner File if show_logo is True
+            if show_logo and os.path.exists(self.footer_banner):
+                try:
+                    para_banner = footer_table.rows[0].cells[0].paragraphs[0]
+                    run_banner = para_banner.add_run()
+                    run_banner.add_picture(self.footer_banner, width=Inches(5.5))
+                except Exception as e:
+                     print(f"Error adding footer banner to DOCX: {e}")
             
-            # Add GenQA Logo (Keep file reference if exists, it's not core branding)
+            # Add GenQA Logo (ALWAYS keep as requested)
             if os.path.exists(self.genqa_logo):
                 para_logo = footer_table.rows[0].cells[1].paragraphs[0]
                 para_logo.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -242,7 +261,7 @@ class PGTADocxGenerator:
         
         # Results table
         results_table = doc.add_table(rows=len(embryos_data) + 1, cols=5)
-        results_table.style = 'Table Grid'
+        # results_table.style = 'Table Grid' # Removed black borders
         
         # Header row
         headers = ['S. No.', 'Sample', 'Result', 'MTcopy', 'Interpretation']
@@ -258,12 +277,12 @@ class PGTADocxGenerator:
         for idx, embryo in enumerate(embryos_data, 1):
             row = results_table.rows[idx]
             row.cells[0].text = str(idx)
-            row.cells[1].text = embryo.get('embryo_id', '')
-            row.cells[2].text = embryo.get('result_summary', '')
+            row.cells[1].text = self._clean(embryo.get('embryo_id'))
+            row.cells[2].text = self._clean(embryo.get('result_summary'))
             
             # MTcopy: NA for non-euploid
-            interp = embryo.get('interpretation', '')
-            mtcopy = embryo.get('mtcopy', 'NA')
+            interp = self._clean(embryo.get('interpretation'))
+            mtcopy = self._clean(embryo.get('mtcopy'), 'NA')
             if interp.upper() != "EUPLOID":
                 mtcopy = "NA"
             row.cells[3].text = mtcopy
@@ -271,8 +290,8 @@ class PGTADocxGenerator:
             
             for idx_cell, cell in enumerate(row.cells):
                 cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                res_sum = embryo.get('result_summary', '')
-                res_interp = embryo.get('interpretation', '')
+                res_sum = self._clean(embryo.get('result_summary'))
+                res_interp = self._clean(embryo.get('interpretation'))
                 text_color = self._get_result_color_hex(res_sum, res_interp)
                 
                 # ONLY first column gets peach
@@ -301,95 +320,90 @@ class PGTADocxGenerator:
         doc.add_paragraph() # Spacer
     
     def _populate_patient_table(self, table, patient_data):
-        """Populate patient information table"""
+        """Populate patient information table with optimized alignment"""
         # Row 0: Patient name and PIN
         table.rows[0].cells[0].text = "Patient name"
-        table.rows[0].cells[0].paragraphs[0].runs[0].bold = True
         table.rows[0].cells[1].text = ":"
-        table.rows[0].cells[2].text = patient_data.get('patient_name', '')
-        table.rows[0].cells[2].paragraphs[0].runs[0].bold = True # Bold name
+        table.rows[0].cells[2].text = self._clean(patient_data.get('patient_name'))
         table.rows[0].cells[3].text = "PIN"
-        table.rows[0].cells[3].paragraphs[0].runs[0].bold = True
         table.rows[0].cells[4].text = ":"
-        table.rows[0].cells[5].text = patient_data.get('pin', '')
-        table.rows[0].cells[5].paragraphs[0].runs[0].bold = True # Bold PIN
+        table.rows[0].cells[5].text = self._clean(patient_data.get('pin'))
         
         # Row 1: Spouse name
         table.rows[1].cells[2].text = patient_data.get('spouse_name', '')
-        table.rows[1].cells[2].paragraphs[0].runs[0].bold = True
+        
+        # Rows 2 & 3: Empty spacers (merged or small)
         
         # Row 4: Age and Sample Number
         table.rows[4].cells[0].text = "Date of Birth/ Age"
-        table.rows[4].cells[0].paragraphs[0].runs[0].bold = True
         table.rows[4].cells[1].text = ":"
-        table.rows[4].cells[2].text = patient_data.get('age', '')
+        table.rows[4].cells[2].text = self._clean(patient_data.get('age'))
         table.rows[4].cells[3].text = "Sample Number"
-        table.rows[4].cells[3].paragraphs[0].runs[0].bold = True
         table.rows[4].cells[4].text = ":"
-        table.rows[4].cells[5].text = patient_data.get('sample_number', '')
+        table.rows[4].cells[5].text = self._clean(patient_data.get('sample_number'))
         
         # Row 6: Referring Clinician and Biopsy date
         table.rows[6].cells[0].text = "Referring Clinician"
-        table.rows[6].cells[0].paragraphs[0].runs[0].bold = True
         table.rows[6].cells[1].text = ":"
         table.rows[6].cells[2].text = patient_data.get('referring_clinician', '')
-        table.rows[6].cells[2].paragraphs[0].runs[0].bold = True
         table.rows[6].cells[3].text = "Biopsy date"
-        table.rows[6].cells[3].paragraphs[0].runs[0].bold = True
         table.rows[6].cells[4].text = ":"
         table.rows[6].cells[5].text = patient_data.get('biopsy_date', '')
-        table.rows[6].cells[5].paragraphs[0].runs[0].bold = True
         
         # Row 8: Hospital and Sample collection date
         table.rows[8].cells[0].text = "Hospital/Clinic"
-        table.rows[8].cells[0].paragraphs[0].runs[0].bold = True
         table.rows[8].cells[1].text = ":"
-        table.rows[8].cells[2].text = patient_data.get('hospital_clinic', '')
+        table.rows[8].cells[2].text = self._clean(patient_data.get('hospital_clinic'))
         table.rows[8].cells[3].text = "Sample collection date"
-        table.rows[8].cells[3].paragraphs[0].runs[0].bold = True
         table.rows[8].cells[4].text = ":"
-        table.rows[8].cells[5].text = patient_data.get('sample_collection_date', '')
+        table.rows[8].cells[5].text = self._clean(patient_data.get('sample_collection_date'))
         
         # Row 10: Specimen and Sample receipt date
         table.rows[10].cells[0].text = "Specimen"
-        table.rows[10].cells[0].paragraphs[0].runs[0].bold = True
         table.rows[10].cells[1].text = ":"
-        table.rows[10].cells[2].text = patient_data.get('specimen', '')
-        table.rows[10].cells[2].paragraphs[0].runs[0].bold = True
+        table.rows[10].cells[2].text = self._clean(patient_data.get('specimen'))
         table.rows[10].cells[3].text = "Sample receipt date"
-        table.rows[10].cells[3].paragraphs[0].runs[0].bold = True
         table.rows[10].cells[4].text = ":"
-        table.rows[10].cells[5].text = patient_data.get('sample_receipt_date', '')
-        table.rows[10].cells[5].paragraphs[0].runs[0].bold = True
+        table.rows[10].cells[5].text = self._clean(patient_data.get('sample_receipt_date'))
         
-        # Row 12: Biopsy performed by and Report date (REORDERED)
+        # Row 12: Biopsy performed by and Report date
         table.rows[12].cells[0].text = "Biopsy performed by"
-        table.rows[12].cells[0].paragraphs[0].runs[0].bold = True
         table.rows[12].cells[1].text = ":"
-        table.rows[12].cells[2].text = patient_data.get('biopsy_performed_by', '')
-        table.rows[12].cells[2].paragraphs[0].runs[0].bold = True
+        table.rows[12].cells[2].text = self._clean(patient_data.get('biopsy_performed_by'))
         table.rows[12].cells[3].text = "Report date"
-        table.rows[12].cells[3].paragraphs[0].runs[0].bold = True
         table.rows[12].cells[4].text = ":"
-        table.rows[12].cells[5].text = patient_data.get('report_date', '')
-        table.rows[12].cells[5].paragraphs[0].runs[0].bold = True
+        table.rows[12].cells[5].text = self._clean(patient_data.get('report_date'))
         
-        # Set column widths precisely (Total = 6.5 Inches - FULL CONTAINER)
-        widths = [Inches(1.25), Inches(0.1), Inches(1.85), Inches(1.25), Inches(0.1), Inches(1.85)]
-        table.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        # Set column widths precisely (Total = 6.4 Inches approx 490pt)
+        # Using tight colon columns like in PDF
+        widths = [Inches(1.25), Inches(0.15), Inches(1.8), Inches(1.15), Inches(0.15), Inches(1.9)]
+        table.alignment = WD_ALIGN_PARAGRAPH.LEFT
         for row in table.rows:
             for i, width in enumerate(widths):
                 row.cells[i].width = width
 
-        # Set font size for all cells
-        for row in table.rows:
-            for cell in row.cells:
-                for paragraph in cell.paragraphs:
-                    paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    for run in paragraph.runs:
+        # Set styling and bold values
+        for row_idx, row in enumerate(table.rows):
+            for cell_idx, cell in enumerate(row.cells):
+                self._set_cell_background(cell, "F1F1F7")
+                if len(cell.paragraphs) > 0:
+                    p = cell.paragraphs[0]
+                    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if cell_idx in [0, 3] else WD_ALIGN_PARAGRAPH.JUSTIFY
+                    if p.runs:
+                        run = p.runs[0]
+                        # Bold labels (cols 0, 3)
+                        if cell_idx in [0, 3]:
+                            run.bold = True
+                        # Bold values (cols 2, 5)
+                        if cell_idx in [2, 5]:
+                            run.bold = True
+                        # Bold colons (cols 1, 4)
+                        if cell_idx in [1, 4]:
+                            run.bold = True
                         run.font.size = Pt(9)
-                # All patient info cells get light blue-grey background
-                self._set_cell_background(cell, "F1F1F7")  # Exact from source
+                    else:
+                        run = p.add_run() # Fix for empty cells if needed
+                        run.font.size = Pt(9)
     
     def _add_methodology_page(self, doc):
         """Add methodology and static content page"""
@@ -400,6 +414,7 @@ class PGTADocxGenerator:
         
         method_text = doc.add_paragraph(self.METHODOLOGY_TEXT)
         method_text.style = 'Normal'
+        method_text.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         for run in method_text.runs:
             run.font.size = Pt(9)
         
@@ -411,16 +426,19 @@ class PGTADocxGenerator:
         mosaic_header.style = 'Heading 2'
         
         mosaic_text = doc.add_paragraph(self.MOSAICISM_TEXT)
+        mosaic_text.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         for run in mosaic_text.runs:
             run.font.size = Pt(9)
         
         # Bullets
         for bullet in self.MOSAICISM_BULLETS:
             p = doc.add_paragraph(bullet, style='List Bullet')
+            p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             for run in p.runs:
                 run.font.size = Pt(9)
         
         clinical_text = doc.add_paragraph(self.MOSAICISM_CLINICAL)
+        clinical_text.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         for run in clinical_text.runs:
             run.font.size = Pt(9)
         
@@ -433,6 +451,7 @@ class PGTADocxGenerator:
         
         for limitation in self.LIMITATIONS:
             p = doc.add_paragraph(limitation, style='List Bullet')
+            p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             for run in p.runs:
                 run.font.size = Pt(9)
         
@@ -445,21 +464,44 @@ class PGTADocxGenerator:
         
         for idx, ref in enumerate(self.REFERENCES, 1):
             ref_text = doc.add_paragraph(f"{idx}. {ref}")
+            ref_text.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             for run in ref_text.runs:
                 run.font.size = Pt(8)
     
     def _add_embryo_page(self, doc, patient_data, embryo_data):
         """Add individual embryo results page"""
-        # Patient info
-        patient_p = doc.add_paragraph()
-        run1 = patient_p.add_run(f"Patient name : ")
-        run1.bold = True
-        patient_p.add_run(f"{patient_data.get('patient_name', '')} {patient_data.get('spouse_name', '')}").bold = True
+        # Patient info table for banner
+        banner_table = doc.add_table(rows=2, cols=6)
+        banner_table.width = Inches(6.4)
         
-        pin_p = doc.add_paragraph()
-        run2 = pin_p.add_run(f"PIN : ")
-        run2.bold = True
-        pin_p.add_run(f"{patient_data.get('pin', '')}").bold = True
+        # Row 0: Patient name and PIN
+        banner_table.rows[0].cells[0].text = "Patient name"
+        banner_table.rows[0].cells[1].text = ":"
+        banner_table.rows[0].cells[2].text = self._clean(patient_data.get('patient_name'))
+        banner_table.rows[0].cells[3].text = "PIN"
+        banner_table.rows[0].cells[4].text = ":"
+        banner_table.rows[0].cells[5].text = self._clean(patient_data.get('pin'))
+        
+        # Row 1: Spouse name
+        banner_table.rows[1].cells[2].text = patient_data.get('spouse_name', '')
+
+        # Set column widths precisely (Total = 6.4 Inches approx 490pt)
+        widths = [Inches(1.25), Inches(0.15), Inches(1.8), Inches(1.15), Inches(0.15), Inches(1.9)]
+        for row in banner_table.rows:
+            for i, width in enumerate(widths):
+                row.cells[i].width = width
+
+        # Style banner table
+        for row in banner_table.rows:
+            for cell_idx, cell in enumerate(row.cells):
+                self._set_cell_background(cell, "F1F1F7")
+                if cell.paragraphs:
+                    p = cell.paragraphs[0]
+                    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if cell_idx in [0, 3] else WD_ALIGN_PARAGRAPH.JUSTIFY
+                    if p.runs:
+                        run = p.runs[0]
+                        run.bold = True # All banner text bold as in source
+                        run.font.size = Pt(10)
         
         doc.add_paragraph()  # Spacer
         
@@ -502,7 +544,6 @@ class PGTADocxGenerator:
         rows = [
             ("Result:", res_text, None), # Result remains black
             ("Autosomes:", autosomes_text, auto_color),
-            ("Sex chromosomes:", embryo_data.get('sex_chromosomes', ''), None),
             ("Interpretation:", interp_text, interp_color),
             ("MTcopy:", mtcopy, None)
         ]
@@ -522,9 +563,11 @@ class PGTADocxGenerator:
             for cell in row.cells:
                 self._set_cell_background(cell, "F1F1F7")
                 for p in cell.paragraphs:
-                    p.runs[0].font.size = Pt(9)
-                    if color and label != "Result:": # Keep result black
-                        p.runs[0].font.color.rgb = RGBColor.from_string(color[1:])
+                    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                    if p.runs:
+                        p.runs[0].font.size = Pt(9)
+                        if color and label != "Result:": # Keep result black
+                            p.runs[0].font.color.rgb = RGBColor.from_string(color[1:])
 
         doc.add_paragraph()  # Spacer
         
@@ -628,21 +671,51 @@ class PGTADocxGenerator:
         # Signature section removed from intermediate pages
 
     def _add_signature_section(self, doc):
-        """Add signature section using Base64 assets"""
+        """Add signature section using original image files for Word as requested"""
         try:
             sig_p = doc.add_paragraph()
             sig_p.add_run("This report has been reviewed and approved by:").bold = True
             
-            # Use Base64 Signature Image
-            sig_stream = BytesIO(base64.b64decode(SIGNS_IMAGE_B64))
-            doc.add_picture(sig_stream, width=Inches(5.5))
+            # Create a 3-column table for individual signatures
+            sig_table = doc.add_table(rows=3, cols=3)
+            sig_table.width = Inches(6.5)
             
-            doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            # Helper to add image to cell
+            def add_img_to_cell(cell, path):
+                if path and os.path.exists(path):
+                    p = cell.paragraphs[0]
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    run = p.add_run()
+                    run.add_picture(path, width=Inches(1.4)) # Sized for 3-col
+
+            # Row 0: Images
+            add_img_to_cell(sig_table.rows[0].cells[0], self.sign_anand)
+            add_img_to_cell(sig_table.rows[0].cells[1], self.sign_sachin)
+            add_img_to_cell(sig_table.rows[0].cells[2], self.sign_director)
+            
+            # Row 1: Names
+            for idx, sig in enumerate(self.SIGNATURES):
+                cell = sig_table.rows[1].cells[idx]
+                p = cell.paragraphs[0]
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = p.add_run(sig['name'])
+                run.font.size = Pt(11)
+                
+            # Row 2: Titles
+            for idx, sig in enumerate(self.SIGNATURES):
+                cell = sig_table.rows[2].cells[idx]
+                p = cell.paragraphs[0]
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = p.add_run(sig['title'])
+                run.font.size = Pt(11)
+
+            # Center table
+            sig_table.alignment = WD_ALIGN_PARAGRAPH.CENTER
             return
         except Exception as e:
-            print(f"Error adding Base64 signature image to DOCX: {e}")
+            print(f"Error adding individual signature images to DOCX: {e}")
             
-            # Fallback to file if exists
+            # Fallback to single image if exists
             if os.path.exists(self.signs_image):
                 try:
                     doc.add_picture(self.signs_image, width=Inches(5.5))
@@ -651,7 +724,7 @@ class PGTADocxGenerator:
                 except:
                     pass
 
-        # Fallback to table
+        # Low-level fallback to text-only table
         sig_header = doc.add_paragraph("This report has been reviewed and approved by:")
         sig_header.runs[0].bold = True
         
