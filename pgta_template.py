@@ -11,7 +11,7 @@ from reportlab.platypus import (
     SimpleDocTemplate, Table, TableStyle, Paragraph, 
     Spacer, PageBreak, Image, KeepTogether, CondPageBreak
 )
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY, TA_RIGHT
 from reportlab.pdfgen import canvas
 from PIL import Image as PILImage
 import os
@@ -43,7 +43,7 @@ class PGTAReportTemplate:
     CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT  # 496 points
     
     # Asset paths
-    ASSETS_DIR = "extracted_assets"
+    ASSETS_DIR = "assets/pgta"
     HEADER_LOGO = os.path.join(ASSETS_DIR, "image_page1_0.png")
     FOOTER_BANNER = os.path.join(ASSETS_DIR, "image_page1_1.png")
     FOOTER_LOGO = os.path.join(ASSETS_DIR, "image_page1_2.png")
@@ -268,6 +268,27 @@ class PGTAReportTemplate:
             parent=self.styles['PGTABodyText'],
             alignment=TA_CENTER
         ))
+        
+        # Label text style (Force RIGHT alignment, NO justification)
+        self.styles.add(ParagraphStyle(
+            name='PGTALabelText',
+            parent=self.styles['Normal'],
+            fontSize=10, 
+            leading=12,
+            alignment=TA_RIGHT,
+            wordWrap='CJK',
+            fontName=self._get_font('SegoeUI-Bold', 'Helvetica-Bold')
+        ))
+
+        # Banner Value style (Matches Label metrics for alignment)
+        self.styles.add(ParagraphStyle(
+            name='PGTABannerValueText',
+            parent=self.styles['Normal'],
+            fontSize=10, 
+            leading=12,
+            alignment=TA_JUSTIFY,
+            fontName=self._get_font('SegoeUI-Bold', 'Helvetica-Bold')
+        ))
     
     def generate_pdf(self, output_path, patient_data, embryos_data, show_logo=True):
         """
@@ -434,10 +455,16 @@ class PGTAReportTemplate:
             return Paragraph(f"<b>{content}</b>", style)
         return Paragraph(content, style)
 
+    def _wrap_label(self, text):
+        """Wrap label text with forced RIGHT alignment and no word gaps"""
+        if not text: return ""
+        # Use <nobr> tags to prevent word breaking/justification
+        return Paragraph(f"<nobr>{str(text)}</nobr>", self.styles['PGTALabelText'])
+
     def _create_patient_info_table(self, patient_data):
         """Create patient information table"""
         # Prepare data with Paragraph wrapping to prevent overlap
-        # Using specific colWidths for tight PIN alignment: [85, 12, 146, 85, 12, 150] Total: 490pt
+        # Standard widths for cover page: [85, 12, 146, 85, 12, 150] Total: 490pt
         data = [
             [self._wrap_text('<b>Patient name</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('patient_name'))}</b>"), self._wrap_text('<b>PIN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('pin'))}</b>")],
             [self._wrap_text(''), self._wrap_text(''), self._wrap_text(f"<b>{self._clean(patient_data.get('spouse_name'))}</b>"), self._wrap_text(''), self._wrap_text(''), self._wrap_text('')],
@@ -448,7 +475,7 @@ class PGTAReportTemplate:
             [self._wrap_text('<b>Biopsy performed by</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_performed_by'))}</b>"), self._wrap_text('<b>Report date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('report_date'))}</b>")]
         ]
         
-        # Create table with optimized widths [Total: 490pt]
+        # Create table with standard widths [Total: 490pt]
         table = Table(data, colWidths=[85, 12, 146, 85, 12, 150], hAlign='LEFT')
         
         # Style table
@@ -456,8 +483,8 @@ class PGTAReportTemplate:
             ('FONTNAME', (0, 0), (-1, -1), self._get_font('SegoeUI-Bold', 'Helvetica-Bold')),
             ('FONTSIZE', (0, 0), (-1, -1), 10),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('ALIGN', (0, 0), (0, -1), 'RIGHT'), # Standard LEFT alignment
-            ('ALIGN', (3, 0), (3, -1), 'RIGHT'), # Standard LEFT alignment
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'), # Standard LEFT alignment
+            ('ALIGN', (3, 0), (3, -1), 'LEFT'), # Standard LEFT alignment
             ('LEFTPADDING', (0, 0), (-1, -1), 0),
             ('RIGHTPADDING', (0, 0), (-1, -1), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
@@ -580,36 +607,40 @@ class PGTAReportTemplate:
         elements.append(Spacer(1, 8))
         
         # Prepare info data with sanitation
+        def _wrap_banner(text):
+            if not text: return ""
+            return Paragraph(str(text), self.styles['PGTABannerValueText'])
+
         info_data = [[
-            self._wrap_text('<b>Patient name</b>', True),
-            self._wrap_text(':'),
-            self._wrap_text(f"<b>{self._clean(patient_data.get('patient_name'))}</b>"),
-            self._wrap_text('<b>PIN</b>', True),
-            self._wrap_text(':'),
-            self._wrap_text(f"<b>{self._clean(patient_data.get('pin'))}</b>")
+            self._wrap_label('Patient name'),
+            _wrap_banner(':'),
+            _wrap_banner(f"<b>{self._clean(patient_data.get('patient_name'))}</b>"),
+            self._wrap_label('PIN'),
+            _wrap_banner(':'),
+            _wrap_banner(f"<b>{self._clean(patient_data.get('pin'))}</b>")
         ],
         [
             self._wrap_text(''),
             self._wrap_text(''),
-            self._wrap_text(f"<b>{self._clean(patient_data.get('spouse_name'))}</b>"),
+            _wrap_banner(f"<b>{self._clean(patient_data.get('spouse_name'))}</b>"),
             self._wrap_text(''),
             self._wrap_text(''),
             self._wrap_text('')
         ]]
         
         # Optimized widths for detailed banner [Total: 490pt]
-        info_table = Table(info_data, colWidths=[85, 12, 146, 85, 12, 150], hAlign='LEFT')
+        info_table = Table(info_data, colWidths=[88, 6, 149, 88, 6, 153], hAlign='LEFT')
         info_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(self.COLORS['patient_info_bg'])),
             ('FONTNAME', (0, 0), (-1, -1), self._get_font('SegoeUI-Bold', 'Helvetica-Bold')),
             ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('ALIGN', (0, 0), (0, -1), 'RIGHT'), # Shift near colon
             ('ALIGN', (3, 0), (3, -1), 'RIGHT'), # Shift near colon
-            ('LEFTPADDING', (0, 0), (-1, -1), 0), # Remove padding to fix spacing
+            ('LEFTPADDING', (0, 0), (-1, -1), 0),
             ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
         ]))
         elements.append(info_table)
         elements.append(Spacer(1, 8))

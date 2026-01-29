@@ -7,7 +7,7 @@ from PIL import Image as PILImage
 class TemplateParser:
     """Parses DOCX template to extract structure, styles, and assets."""
     
-    def __init__(self, template_path, assets_dir="extracted_assets"):
+    def __init__(self, template_path, assets_dir="assets/pgta"):
         self.template_path = template_path
         self.assets_dir = assets_dir
         self.doc = Document(template_path)
@@ -23,6 +23,7 @@ class TemplateParser:
             'notes_bg': 'F2F2F2'
         }
         
+        self.img_path = 'assets/pgta/signs.png'
     def extract_assets(self):
         """Extract images from the docx template."""
         image_count = 0

@@ -210,7 +210,7 @@ Example:
 
 ### Images Not Appearing in PDF
 - Ensure images are in PNG format
-- Check that `extracted_assets` folder exists with logo files
+- Check that `assets/pgta/` folder exists with logo files
 - Verify image paths are correct
 
 ### Excel Template Issues

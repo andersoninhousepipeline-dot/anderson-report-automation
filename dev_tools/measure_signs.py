@@ -1,7 +1,7 @@
 from PIL import Image
 import os
 
-img_path = 'extracted_assets/signs.png'
+img_path = 'assets/pgta/signs.png'
 if not os.path.exists(img_path):
     print(f"Error: {img_path} not found")
     exit(1)

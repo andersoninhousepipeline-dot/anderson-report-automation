@@ -2,7 +2,7 @@
 # PGT-A Report Generator Launcher Script
 
 echo "==================================="
-echo "PGT-A Report Generator"
+echo "PGT-A Report Generator (Linux)"
 echo "==================================="
 echo ""
 
@@ -13,24 +13,29 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# Check Python version
-PYTHON_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-echo "Python version: $PYTHON_VERSION"
+# Create Virtual Environment if it doesn't exist
+if [ ! -d ".venv" ]; then
+    echo "Creating virtual environment..."
+    python3 -m venv .venv
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to create virtual environment"
+        exit 1
+    fi
+fi
 
-# Check if dependencies are installed
-echo "Checking dependencies..."
-python3 -c "import reportlab, docx, PyQt6, pandas, openpyxl, PIL, pdfplumber, PyPDF2" 2>/dev/null
+# Activate Virtual Environment
+echo "Activating environment..."
+source .venv/bin/activate
+
+# Install/Update dependencies
+echo "Checking/Installing dependencies..."
+pip install --upgrade pip
+pip install -r requirements.txt
 
 if [ $? -ne 0 ]; then
     echo ""
-    echo "Missing dependencies detected!"
-    echo "Installing required packages..."
-    pip install -r requirements_app.txt
-    
-    if [ $? -ne 0 ]; then
-        echo "Error: Failed to install dependencies"
-        exit 1
-    fi
+    echo "Error: Failed to install dependencies"
+    exit 1
 fi
 
 echo ""
@@ -38,7 +43,16 @@ echo "Starting PGT-A Report Generator..."
 echo ""
 
 # Launch the application
-python3 pgta_report_generator.py
+python3 pgta_report_generator.py 2>run_error.log
 
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "[ERROR] The application failed to start."
+    echo "Detailed error:"
+    cat run_error.log
+    echo ""
+fi
+
+deactivate
 echo ""
 echo "Application closed."

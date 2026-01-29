@@ -6,6 +6,7 @@ Generates Word documents matching the PDF template
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import os
@@ -382,13 +383,13 @@ class PGTADocxGenerator:
             for i, width in enumerate(widths):
                 row.cells[i].width = width
 
-        # Set styling and bold values
         for row_idx, row in enumerate(table.rows):
             for cell_idx, cell in enumerate(row.cells):
                 self._set_cell_background(cell, "F1F1F7")
+                cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
                 if len(cell.paragraphs) > 0:
                     p = cell.paragraphs[0]
-                    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if cell_idx in [0, 3] else WD_ALIGN_PARAGRAPH.JUSTIFY
+                    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
                     if p.runs:
                         run = p.runs[0]
                         # Bold labels (cols 0, 3)
@@ -486,7 +487,8 @@ class PGTADocxGenerator:
         banner_table.rows[1].cells[2].text = patient_data.get('spouse_name', '')
 
         # Set column widths precisely (Total = 6.4 Inches approx 490pt)
-        widths = [Inches(1.25), Inches(0.15), Inches(1.8), Inches(1.15), Inches(0.15), Inches(1.9)]
+        # Narrowing colon columns for tight fit
+        widths = [Inches(1.25), Inches(0.1), Inches(1.85), Inches(1.15), Inches(0.1), Inches(1.95)]
         for row in banner_table.rows:
             for i, width in enumerate(widths):
                 row.cells[i].width = width
@@ -495,9 +497,16 @@ class PGTADocxGenerator:
         for row in banner_table.rows:
             for cell_idx, cell in enumerate(row.cells):
                 self._set_cell_background(cell, "F1F1F7")
+                cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
                 if cell.paragraphs:
                     p = cell.paragraphs[0]
-                    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if cell_idx in [0, 3] else WD_ALIGN_PARAGRAPH.JUSTIFY
+                    # FORCE ALIGNMENT: RIGHT for labels, LEFT for colons, JUSTIFY for values
+                    if cell_idx in [0, 3]:
+                        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    elif cell_idx in [1, 4]:
+                        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    else:
+                        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
                     if p.runs:
                         run = p.runs[0]
                         run.bold = True # All banner text bold as in source

@@ -673,13 +673,21 @@ class PGTAReportGeneratorApp(QMainWindow):
         show_logo = self.logo_combo.currentText() == "With Logo"
         self.preview_worker = PreviewWorker(p_data, e_data, temp_pdf, show_logo=show_logo)
         self.preview_worker.finished.connect(self.on_preview_generated)
+        self.preview_worker.error.connect(lambda e: print(f"PREVIEW ERROR: {e}"))
         self.preview_worker.start()
 
     def on_preview_generated(self, pdf_path):
-        """Load generated PDF into viewer"""
+        """Load generated PDF into viewer with robust reloading"""
         if QPdfDocument and self.pdf_document and os.path.exists(pdf_path):
-            self.pdf_document.load(pdf_path)
-            self.pdf_view.setZoomMode(QPdfView.ZoomMode.FitInView)
+            try:
+                # Explicitly unload current file to prevent locks
+                self.pdf_document.close()
+                
+                # Reload fresh file
+                self.pdf_document.load(pdf_path)
+                self.pdf_view.setZoomMode(QPdfView.ZoomMode.FitInView)
+            except Exception as e:
+                print(f"PREVIEW LOAD ERROR: {e}")
     
     def update_embryo_forms(self, count):
         """Update number of embryo forms and summary table"""
@@ -1168,7 +1176,8 @@ class PGTAReportGeneratorApp(QMainWindow):
         TEXT_BLUE = "#0000FF"
         
         # Logo Path
-        logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "extracted_assets", "chrominst_logo.png")
+        # Logo Path (Updated to assets/pgta/)
+        logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "pgta", "image_page1_0.png")
         logo_html = f'<img src="file://{logo_path}" height="50">' if os.path.exists(logo_path) else '<div style="font-size: 24px; font-weight: bold; color: {BLUE_TITLE};">CHROMINST</div>'
         
         html = f"""

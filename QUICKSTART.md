@@ -4,7 +4,7 @@
 
 ```bash
 cd /data/Sethu/PGTA-Report
-pip install -r requirements_app.txt
+pip install -r requirements.txt
 ```
 
 ## ▶️ Launch Application
@@ -135,7 +135,7 @@ pip install -r requirements_app.txt
 - Choose where to save reports
 
 ### Reports look wrong
-- Check that `extracted_assets/` folder exists
+- Check that `assets/pgta/` folder exists
 - Verify logo images are present
 
 ## 📞 Need Help?
