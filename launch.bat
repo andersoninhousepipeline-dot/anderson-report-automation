@@ -63,13 +63,13 @@ if %errorlevel% neq 0 (
 echo.
 echo Starting PGT-A Report Generator...
 echo.
-python pgta_report_generator.py 2>run_error.log
+python pgta_report_generator.py > run_output.log 2>&1
 
 if %errorlevel% neq 0 (
     echo.
     echo [ERROR] The application failed to start.
     echo Detailed error:
-    type run_error.log
+    type run_output.log
     echo.
     pause
 )
