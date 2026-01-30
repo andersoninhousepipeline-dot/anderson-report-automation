@@ -13,3 +13,6 @@ test_report.pdf
 !assets/**
 !pgta_styles.css
 !pgta_assets.py
+
+# Virtual environment
+.venv/
