@@ -33,6 +33,12 @@ if "%PYTHON_CMD%"=="" (
     exit /b
 )
 
+echo.
+echo Debug: Checking Python Architecture...
+%PYTHON_CMD% -c "import struct; print('Python Architecture: ' + str(struct.calcsize('P') * 8) + ' bit')"
+%PYTHON_CMD% --version
+echo.
+
 :: Create Virtual Environment if it doesn't exist
 if not exist ".venv" (
     echo Creating virtual environment...
@@ -59,6 +65,8 @@ if %errorlevel% neq 0 (
     pause
     exit /b
 )
+
+
 
 echo.
 echo Starting PGT-A Report Generator...

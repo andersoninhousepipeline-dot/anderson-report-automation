@@ -6,6 +6,7 @@ Since you need a native Windows experience, I have provided two ways to run the 
 This is the easiest way if you have Python installed.
 
 1.  **Install Python**: Download from [python.org](https://www.python.org/) and ensure you check **"Add Python to PATH"** during installation.
+    > **CRITICAL**: You MUST install the **64-bit** version of Python. The 32-bit version will FAIL to install dependencies.
 2.  **Double-click `launch.bat`**: This will automatically check for dependencies, install them if missing, and start the app.
 
 ---
