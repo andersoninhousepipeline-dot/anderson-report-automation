@@ -108,6 +108,7 @@ class ReportGeneratorWorker(QThread):
             try:
                 sample_num = patient_data['patient_info'].get('sample_number', f'Sample_{idx}')
                 patient_name = patient_data['patient_info'].get('patient_name', 'Unknown')
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 logo_suffix = "_withlogo" if self.show_logo else "_withoutlogo"
                 base_filename = f"{sample_num}_{patient_name.replace(' ', '_')}_{timestamp}{logo_suffix}"
                 
