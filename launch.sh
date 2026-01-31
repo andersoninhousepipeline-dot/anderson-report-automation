@@ -13,6 +13,11 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
+echo "Debug: Checking Python Architecture..."
+python3 -c "import struct; print('Python Architecture: ' + str(struct.calcsize('P') * 8) + ' bit')"
+python3 --version
+echo ""
+
 # Create Virtual Environment if it doesn't exist
 if [ ! -d ".venv" ]; then
     echo "Creating virtual environment..."

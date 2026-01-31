@@ -16,14 +16,18 @@ A professional desktop application that generates PDF and DOCX reports for Preim
 - **💾 Settings Persistence**: Remembers your last used directories and settings
 - **🎨 Professional Templates**: Pixel-perfect recreation of the original PGT-A report design
 - **✅ Data Validation**: Built-in validation to ensure data completeness
+- **📏 Vertical Spacing Control**: Press **Enter** in any field to add manual line breaks/gaps to the PDF.
+- **🖱️ Safe Dropdowns**: Menus ignore mouse wheel to prevent accidental changes.
+- **✏️ Editable Interpretations**: Type custom results directly into the "Interpretation" menu.
 
 ---
 
 ## 📋 Requirements
 
-- **Python 3.8+**
-- **Operating System**: Windows, macOS, or Linux
-- **Dependencies**: See `requirements.txt`
+- **Python 3.10+ (64-bit Recommended)**
+- **Operating System**: Windows (10/11), macOS, or Linux
+- **Architecture**: 64-bit is highly recommended to avoid PDF rendering issues.
+- **Dependencies**: See `requirements.txt` (approx. 150MB total)
 
 ---
 
@@ -316,6 +320,13 @@ This software is provided for internal use in PGT-A report generation.
 ---
 
 ## 🔄 Version History
+
+### Version 1.1.0 (2026-01-31)
+- **NEW**: Full multi-line support for all patient details.
+- **NEW**: Automatic newline-to-PDF-break conversion (**Enter** key spacing).
+- **NEW**: Safe dropdowns (Wheel event ignored to prevent accidental changes).
+- **NEW**: Editable interpretation dropdowns with "NA" and "Manual Entry".
+- **FIX**: Removed experimental Auto-Shrink in favor of manual spacing control.
 
 ### Version 1.0.0 (2026-01-22)
 - Initial release
