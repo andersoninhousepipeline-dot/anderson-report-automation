@@ -35,7 +35,21 @@ if "%PYTHON_CMD%"=="" (
 
 echo.
 echo Debug: Checking Python Architecture...
-%PYTHON_CMD% -c "import struct; print('Python Architecture: ' + str(struct.calcsize('P') * 8) + ' bit')"
+%PYTHON_CMD% -c "import struct, sys; arch = struct.calcsize('P') * 8; print(f'Python Architecture: {arch} bit'); sys.exit(0 if arch == 64 else 1)"
+if %errorlevel% neq 0 (
+    echo.
+    echo !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    echo WARNING: You are using a 32-bit version of Python.
+    echo This application performs best on 64-bit Python. 
+    echo Some graphics and PDF features may fail on 32-bit.
+    echo !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    echo.
+    echo It is HIGHLY recommended to install 64-bit Python from:
+    echo https://www.python.org/downloads/windows/
+    echo.
+    set /p req_continue="Do you want to continue anyway? (y/n): "
+    if /i not "%req_continue%"=="y" exit /b
+)
 %PYTHON_CMD% --version
 echo.
 

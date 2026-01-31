@@ -30,6 +30,10 @@ python3 pgta_report_generator.py
    - Enter Embryo ID (e.g., PS1, PS2)
    - Fill result details
    - Select chromosome statuses
+
+> [!TIP]
+> **Manual Spacing:** You can hit **Enter** inside any text field (Name, Hospital, Indication) to add blank lines and push content down in the PDF report.
+
 5. **Click "Save Data"**
 6. **Go to "Generate Reports" tab**
 7. **Select output folder**
@@ -99,11 +103,13 @@ python3 pgta_report_generator.py
 
 ## 📋 Interpretation Values
 
+- **NA** - Not available/Not relevant
 - **Euploid** - Normal chromosome complement
 - **Aneuploid** - Abnormal chromosome complement
 - **Low level mosaic** - 30-50% mosaicism
 - **High level mosaic** - 51-80% mosaicism
 - **Complex mosaic** - 3+ chromosomes with mosaic changes
+- **Manual Entry** - Select this to type your own custom interpretation.
 
 ## 📁 Output Files
 
@@ -141,8 +147,8 @@ pip install -r requirements_app.txt
 ## 📞 Need Help?
 
 1. Check [README.md](file:///data/Sethu/PGTA-Report/README.md) for detailed documentation
-2. Review [walkthrough.md](file:///home/nextflowserver/.gemini/antigravity/brain/a29068cc-68fc-487e-8321-31bebc6388b6/walkthrough.md) for complete feature list
-3. See [template_specification.md](file:///data/Sethu/PGTA-Report/template_specification.md) for technical details
+2. Review the latest [walkthrough.md](file:///home/nextflowserver/.gemini/antigravity/brain/3492c0fd-ae57-4448-98f4-9cbf80ddb6f2/walkthrough.md) for new features.
+3. See [template_specification.md](file:///data/Sethu/PGTA-Report/template_specification.md) for technical details.
 
 ---
 

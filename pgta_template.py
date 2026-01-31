@@ -13,6 +13,9 @@ from reportlab.platypus import (
 )
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY, TA_RIGHT
 from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase.pdfmetrics import registerFontFamily
 from PIL import Image as PILImage
 import os
 import sys
@@ -207,6 +210,7 @@ class PGTAReportTemplate:
             textColor=colors.HexColor(self.COLORS['blue_title']), # Color as in source
             spaceBefore=12,
             spaceAfter=3, # Reduced to accommodate line
+            keepWithNext=True,
             fontName=self._get_font('SegoeUI-Bold', 'Helvetica-Bold')
         ))
         
@@ -328,6 +332,12 @@ class PGTAReportTemplate:
         
         # Pages 3+: Individual embryo results
         for idx, embryo in enumerate(embryos_data):
+            # Skip if Low DNA
+            interp = str(embryo.get('interpretation', '')).upper()
+            res = str(embryo.get('result_summary', '')).upper()
+            if "LOW DNA" in interp or "LOW DNA" in res:
+                continue
+                
             story.extend(self._build_embryo_page(patient_data, embryo))
             # Add signature under EACH embryo detail section as requested
             story.append(Spacer(1, 12))
@@ -433,27 +443,44 @@ class PGTAReportTemplate:
         if s.lower() == "nan": return default
         return s
     
-    def _wrap_text(self, text, bold=False, font_size=None, align='LEFT'):
-        """Wrap text in a Paragraph for table cells"""
+    def _wrap_text(self, text, bold=False, font_size=None, align='LEFT', max_width=None):
+        """Wrap text in a Paragraph for table cells, with automatic Line Break support"""
         if not text: return ""
         
-        # Robust 'nan' check
-        content = str(text).strip()
-        if content.lower() == "nan":
-            return ""
-            
-        style = self.styles['PGTABodyText']
-        if align == 'CENTER':
-            style = self.styles['PGTACenteredBodyText']
+        # UI UX: Convert newlines (from Enter key) to PDF line breaks automatically
+        content = str(text).replace('\r\n', '\n').replace('\r', '\n')
+        content = content.replace('\n', '<br/>\u00A0') # Non-breaking space ensures line has height
+        content = content.strip(' \t\r\f\v') # Strip horizontal whitespace
         
-        # Apply font size override if needed
-        content = str(text)
-        if font_size:
-            content = f'<font size="{font_size}">{content}</font>'
+        # Robust 'nan' check
+        if content.lower() == "nan" or content.lower() == "<br/>": # Skip if only nan or empty break
+            if content.lower() != "<br/>": # Keep explicit breaks if user intentionally added them? 
+                # Actually if it's JUST a break, they might want it. 
+                # Let's only skip 'nan'.
+                return "" if content.lower() == "nan" else Paragraph(content, self.styles['PGTABodyText'])
             
+        style_name = 'PGTABodyText'
+        if align == 'CENTER':
+            style_name = 'PGTACenteredBodyText'
+        
+        # Determine style and font size override
+        use_style = self.styles[style_name]
+        if font_size:
+            use_style = ParagraphStyle(
+                name=f'{style_name}_custom_{font_size}',
+                parent=self.styles[style_name],
+                fontSize=font_size,
+                leading=font_size * 1.2
+            )
+            
+        # Apply explicit bold tag if requested (and not already in content)
+        final_text = content
         if bold:
-            return Paragraph(f"<b>{content}</b>", style)
-        return Paragraph(content, style)
+            # Avoid doubling bold tags if user/logic already added them
+            if not (final_text.startswith('<b>') and final_text.endswith('</b>')):
+                final_text = f"<b>{content}</b>"
+            
+        return Paragraph(final_text, use_style)
 
     def _wrap_label(self, text):
         """Wrap label text with forced RIGHT alignment and no word gaps"""
@@ -466,13 +493,13 @@ class PGTAReportTemplate:
         # Prepare data with Paragraph wrapping to prevent overlap
         # Standard widths for cover page: [85, 12, 146, 85, 12, 150] Total: 490pt
         data = [
-            [self._wrap_text('<b>Patient name</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('patient_name'))}</b>"), self._wrap_text('<b>PIN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('pin'))}</b>")],
-            [self._wrap_text(''), self._wrap_text(''), self._wrap_text(f"<b>{self._clean(patient_data.get('spouse_name'))}</b>"), self._wrap_text(''), self._wrap_text(''), self._wrap_text('')],
-            [self._wrap_text('<b>Date of Birth/ Age</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('age'))}</b>"), self._wrap_text('<b>Sample Number</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_number'))}</b>")],
-            [self._wrap_text('<b>Referring Clinician</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('referring_clinician'))}</b>"), self._wrap_text('<b>Biopsy date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_date'))}</b>")],
-            [self._wrap_text('<b>Hospital/Clinic</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('hospital_clinic'))}</b>"), self._wrap_text('<b>Sample collection date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_collection_date'))}</b>")],
-            [self._wrap_text('<b>Specimen</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('specimen'))}</b>"), self._wrap_text('<b>Sample receipt date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_receipt_date'))}</b>")],
-            [self._wrap_text('<b>Biopsy performed by</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_performed_by'))}</b>"), self._wrap_text('<b>Report date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('report_date'))}</b>")]
+            [self._wrap_text('<b>Patient name</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('patient_name'))}</b>", max_width=140), self._wrap_text('<b>PIN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('pin'))}</b>", max_width=144)],
+            [self._wrap_text(''), self._wrap_text(''), self._wrap_text(f"<b>{self._clean(patient_data.get('spouse_name'))}</b>", max_width=140), self._wrap_text(''), self._wrap_text(''), self._wrap_text('')],
+            [self._wrap_text('<b>Date of Birth/ Age</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('age'))}</b>", max_width=140), self._wrap_text('<b>Sample Number</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_number'))}</b>", max_width=144)],
+            [self._wrap_text('<b>Referring Clinician</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('referring_clinician'))}</b>", max_width=140), self._wrap_text('<b>Biopsy date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_date'))}</b>", max_width=144)],
+            [self._wrap_text('<b>Hospital/Clinic</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('hospital_clinic'))}</b>", max_width=140), self._wrap_text('<b>Sample collection date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_collection_date'))}</b>", max_width=144)],
+            [self._wrap_text('<b>Specimen</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('specimen'))}</b>", max_width=140), self._wrap_text('<b>Sample receipt date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_receipt_date'))}</b>", max_width=144)],
+            [self._wrap_text('<b>Biopsy performed by</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_performed_by'))}</b>", max_width=140), self._wrap_text('<b>Report date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('report_date'))}</b>", max_width=144)]
         ]
         
         # Create table with standard widths [Total: 490pt]
@@ -635,8 +662,8 @@ class PGTAReportTemplate:
             ('FONTNAME', (0, 0), (-1, -1), self._get_font('SegoeUI-Bold', 'Helvetica-Bold')),
             ('FONTSIZE', (0, 0), (-1, -1), 10),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('ALIGN', (0, 0), (0, -1), 'RIGHT'), # Shift near colon
-            ('ALIGN', (3, 0), (3, -1), 'RIGHT'), # Shift near colon
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'), # Standard LEFT alignment
+            ('ALIGN', (3, 0), (3, -1), 'LEFT'), # Standard LEFT alignment
             ('LEFTPADDING', (0, 0), (-1, -1), 0),
             ('RIGHTPADDING', (0, 0), (-1, -1), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
@@ -665,12 +692,29 @@ class PGTAReportTemplate:
         res_text = self._clean(embryo_data.get('result_description'))
         autosomes_text = self._clean(embryo_data.get('autosomes'))
         interp_text = self._clean(embryo_data.get('interpretation'))
+        sex_text = self._clean(embryo_data.get('sex_chromosomes', 'Normal'))
         
         # Color based on interpretation for interpretation field
-        # Color based on keywords for autosomes field
         interp_color = self._get_result_color('', interp_text)
-        auto_color = self._get_result_color(autosomes_text, '')
         
+        # Autosomes Color: Same as Interp usually, but check content
+        # User: "Red colour" for L/G/SL/SG, "Blue colour" for M/ML/MG
+        # We can reuse _get_result_color on the autosomes text itself which contains L/G/SL/SG keywords?
+        # Actually our _get_result_color looks for "ANEUPLOID", "MOSAIC" keywords.
+        # The generated autosomes string contains "Status L", "Status MG".
+        # Let's verify _get_result_color handles these or add them.
+        # For now, stick with interp_color as base, but maybe override if "Mosaic" word found in text?
+        auto_color = interp_color
+        if "Mosaic" in autosomes_text or "MG" in autosomes_text or "ML" in autosomes_text:
+             auto_color = colors.blue
+        elif "Status L" in autosomes_text or "Status G" in autosomes_text:
+             auto_color = colors.red
+        
+        # Sex Chromosome Color
+        sex_color = colors.black
+        if "ABNORMAL" in sex_text.upper():
+            sex_color = colors.red
+
         # MTcopy: NA for non-euploid
         mtcopy = self._clean(embryo_data.get('mtcopy'), 'NA')
         if interp_text.upper() != "EUPLOID":
@@ -689,9 +733,11 @@ class PGTAReportTemplate:
         elements.append(Paragraph(f"<b>EMBRYO: {self._clean(embryo_data.get('embryo_id'))}</b>", embryo_id_style))
         elements.append(Spacer(1, 6))
         
+        # Result Row: "Mention in black colour" (User Request)
         detail_data = [
             [self._wrap_text(f"<b>Result:</b> {self._wrap_colored(res_text, colors.black, bold=False)}", False)],
             [self._wrap_text(f"<b>Autosomes:</b> {self._wrap_colored(autosomes_text, auto_color, bold=False)}", False)],
+            [self._wrap_text(f"<b>Sex Chromosomes:</b> {self._wrap_colored(sex_text, sex_color, bold=False)}", False)],
             [self._wrap_text(f"<b>Interpretation:</b> {self._wrap_colored(interp_text, interp_color, bold=False)}", False)],
             [self._wrap_text(f"<b>MTcopy:</b> {mtcopy}", False)]
         ]

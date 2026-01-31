@@ -45,6 +45,11 @@ import pandas as pd
 from pgta_template import PGTAReportTemplate
 from pgta_docx_generator import PGTADocxGenerator
 
+class ClickOnlyComboBox(QComboBox):
+    """Subclass of QComboBox that ignores mouse wheel events to prevent accidental changes when scrolling."""
+    def wheelEvent(self, event):
+        event.ignore()
+
 class PreviewWorker(QThread):
     """Worker thread for generating preview PDF"""
     finished = pyqtSignal(str) # Path to generated PDF
@@ -276,7 +281,7 @@ class PGTAReportGeneratorApp(QMainWindow):
         
         # Template selector
         header_layout.addWidget(QLabel("Select Template:"))
-        self.template_combo = QComboBox()
+        self.template_combo = ClickOnlyComboBox()
         self.template_combo.addItems(["PGT-A", "PGT-M (Coming Soon)", "NIPT (Coming Soon)"])
         self.template_combo.setMinimumWidth(200)
         header_layout.addWidget(self.template_combo)
@@ -335,23 +340,32 @@ class PGTAReportGeneratorApp(QMainWindow):
         scroll_layout.addWidget(patient_group)
         
         # Create input fields
-        self.patient_name_input = QLineEdit()
-        self.spouse_name_input = QLineEdit()
-        self.pin_input = QLineEdit()
-        self.age_input = QLineEdit()
-        self.sample_number_input = QLineEdit()
-        self.referring_clinician_input = QLineEdit()
+        self.patient_name_input = QTextEdit()
+        self.patient_name_input.setMaximumHeight(45)
+        self.spouse_name_input = QTextEdit()
+        self.spouse_name_input.setMaximumHeight(45)
+        self.pin_input = QTextEdit()
+        self.pin_input.setMaximumHeight(40)
+        self.age_input = QTextEdit()
+        self.age_input.setMaximumHeight(40)
+        self.sample_number_input = QTextEdit()
+        self.sample_number_input.setMaximumHeight(40)
+        self.referring_clinician_input = QTextEdit()
+        self.referring_clinician_input.setMaximumHeight(40)
         self.biopsy_date_input = QLineEdit()
         
         self.biopsy_date_input.setPlaceholderText("DD-MM-YYYY")
-        self.hospital_clinic_input = QLineEdit()
+        self.hospital_clinic_input = QTextEdit()
+        self.hospital_clinic_input.setMaximumHeight(45)
         self.sample_collection_date_input = QLineEdit()
         self.sample_collection_date_input.setPlaceholderText("DD-MM-YYYY")
-        self.specimen_input = QLineEdit()
+        self.specimen_input = QTextEdit()
+        self.specimen_input.setMaximumHeight(40)
         self.specimen_input.setText("Day 6 Trophectoderm Biopsy")
         self.sample_receipt_date_input = QLineEdit()
         self.sample_receipt_date_input.setPlaceholderText("DD-MM-YYYY")
-        self.biopsy_performed_by_input = QLineEdit()
+        self.biopsy_performed_by_input = QTextEdit()
+        self.biopsy_performed_by_input.setMaximumHeight(40)
         self.report_date_input = QLineEdit()
         self.report_date_input.setPlaceholderText("DD-MM-YYYY")
         self.report_date_input.setText(datetime.now().strftime("%d-%m-%Y"))
@@ -487,7 +501,7 @@ class PGTAReportGeneratorApp(QMainWindow):
         # Logo Preference
         action_row.addSpacing(20)
         action_row.addWidget(QLabel("Branding:"))
-        self.logo_combo = QComboBox()
+        self.logo_combo = ClickOnlyComboBox()
         self.logo_combo.addItems(["With Logo", "Without Logo"])
         self.logo_combo.currentIndexChanged.connect(self.update_preview)
         action_row.addWidget(self.logo_combo)
@@ -578,18 +592,18 @@ class PGTAReportGeneratorApp(QMainWindow):
 
         # Gather data from form
         p_data = {
-            'patient_name': self.patient_name_input.text(),
-            'spouse_name': self.spouse_name_input.text(),
-            'pin': self.pin_input.text(),
-            'age': self.age_input.text(),
-            'sample_number': self.sample_number_input.text(),
-            'referring_clinician': self.referring_clinician_input.text(),
+            'patient_name': self.patient_name_input.toPlainText(),
+            'spouse_name': self.spouse_name_input.toPlainText(),
+            'pin': self.pin_input.toPlainText(),
+            'age': self.age_input.toPlainText(),
+            'sample_number': self.sample_number_input.toPlainText(),
+            'referring_clinician': self.referring_clinician_input.toPlainText(),
             'biopsy_date': self.biopsy_date_input.text(),
-            'hospital_clinic': self.hospital_clinic_input.text(),
+            'hospital_clinic': self.hospital_clinic_input.toPlainText(),
             'sample_collection_date': self.sample_collection_date_input.text(),
-            'specimen': self.specimen_input.text(),
+            'specimen': self.specimen_input.toPlainText(),
             'sample_receipt_date': self.sample_receipt_date_input.text(),
-            'biopsy_performed_by': self.biopsy_performed_by_input.text(),
+            'biopsy_performed_by': self.biopsy_performed_by_input.toPlainText(),
             'report_date': self.report_date_input.text(),
             'indication': self.indication_input.toPlainText()
         }
@@ -709,8 +723,10 @@ class PGTAReportGeneratorApp(QMainWindow):
                 self.summary_table.setItem(r, 1, QTableWidgetItem(""))
             
             if not self.summary_table.cellWidget(r, 2): # Interpretation
-                combo = QComboBox()
-                combo.addItems(["Euploid", "Aneuploid", "Low level mosaic", "High level mosaic", "Complex mosaic"])
+                combo = ClickOnlyComboBox()
+                combo.addItems(["NA", "Euploid", "Aneuploid", "Low level mosaic", "High level mosaic", "Complex mosaic", "Manual Entry"])
+                combo.setEditable(True)
+                combo.setInsertPolicy(ClickOnlyComboBox.InsertPolicy.NoInsert)
                 combo.currentTextChanged.connect(self.update_preview)
                 self.summary_table.setCellWidget(r, 2, combo)
                 
@@ -801,7 +817,7 @@ class PGTAReportGeneratorApp(QMainWindow):
             chr_grid.addWidget(QLabel(str(i)), row, col_base)
             
             # Status Combo
-            chr_combo = QComboBox()
+            chr_combo = ClickOnlyComboBox()
             chr_combo.addItems(["N", "G", "L", "SG", "SL", "M", "MG", "ML", "SMG", "SML"])
             chr_combo.currentTextChanged.connect(self.update_preview)
             chr_grid.addWidget(chr_combo, row, col_base + 1)
@@ -890,7 +906,7 @@ class PGTAReportGeneratorApp(QMainWindow):
         # Logo selection for bulk
         logo_layout = QHBoxLayout()
         logo_layout.addWidget(QLabel("Branding:"))
-        self.bulk_logo_combo = QComboBox()
+        self.bulk_logo_combo = ClickOnlyComboBox()
         self.bulk_logo_combo.addItems(["With Logo", "Without Logo"])
         self.bulk_logo_combo.currentIndexChanged.connect(self.update_batch_preview)
         logo_layout.addWidget(self.bulk_logo_combo)
@@ -1397,22 +1413,22 @@ class PGTAReportGeneratorApp(QMainWindow):
         """Collect current manual entry data into a dictionary with 'nan' sanitation"""
         def clean(val):
             if val is None: return ""
-            s = str(val).strip()
+            s = str(val).strip(' \t\r\f\v') # Preserves newlines (\n)
             return "" if s.lower() == "nan" else s
 
         patient_info = {
-            'patient_name': clean(self.patient_name_input.text()),
-            'spouse_name': clean(self.spouse_name_input.text()),
-            'pin': clean(self.pin_input.text()),
-            'age': clean(self.age_input.text()),
-            'sample_number': clean(self.sample_number_input.text()),
-            'referring_clinician': clean(self.referring_clinician_input.text()),
+            'patient_name': clean(self.patient_name_input.toPlainText()),
+            'spouse_name': clean(self.spouse_name_input.toPlainText()),
+            'pin': clean(self.pin_input.toPlainText()),
+            'age': clean(self.age_input.toPlainText()),
+            'sample_number': clean(self.sample_number_input.toPlainText()),
+            'referring_clinician': clean(self.referring_clinician_input.toPlainText()),
             'biopsy_date': clean(self.biopsy_date_input.text()),
-            'hospital_clinic': clean(self.hospital_clinic_input.text()),
+            'hospital_clinic': clean(self.hospital_clinic_input.toPlainText()),
             'sample_collection_date': clean(self.sample_collection_date_input.text()),
-            'specimen': clean(self.specimen_input.text()),
+            'specimen': clean(self.specimen_input.toPlainText()),
             'sample_receipt_date': clean(self.sample_receipt_date_input.text()),
-            'biopsy_performed_by': clean(self.biopsy_performed_by_input.text()),
+            'biopsy_performed_by': clean(self.biopsy_performed_by_input.toPlainText()),
             'report_date': clean(self.report_date_input.text()),
             'indication': clean(self.indication_input.toPlainText())
         }
@@ -1774,36 +1790,80 @@ class PGTAReportGeneratorApp(QMainWindow):
                     continue
                 
                 # Extract patient info
-                b_date = ""
-                if 'Date of Biopsy' in p_row and pd.notnull(p_row['Date of Biopsy']):
-                    b_date = str(p_row['Date of Biopsy']).split(' ')[0]
+                def get_clean_value(row, keys, default=''):
+                    if isinstance(keys, str): keys = [keys]
+                    for k in keys:
+                        if k in row:
+                            val = row[k]
+                            if pd.isna(val): continue
+                            s_val = str(val).strip(' \t\r\f\v') # Preserves newlines (\n)
+                            if s_val.lower() in ['nan', 'none', 'nat', 'null']: continue
+                            if s_val: return s_val
+                    return default
+
+                def format_date(d_val):
+                    if not d_val: return ""
+                    s = str(d_val).split(' ')[0] # Remove time if present
+                    try:
+                        # Try parsing common formats
+                        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
+                            try:
+                                dt = datetime.strptime(s, fmt)
+                                return dt.strftime("%d/%m/%Y")
+                            except ValueError:
+                                continue
+                        return s # Return original if parse fails
+                    except:
+                        return s
+
+                b_date_raw = get_clean_value(p_row, ['Date of Biopsy', 'Biopsy Date'])
+                r_date_raw = get_clean_value(p_row, ['Date Sample Received', 'Receipt Date'])
+                
+                b_date = format_date(b_date_raw)
+                r_date = format_date(r_date_raw)
+                rep_date = datetime.now().strftime("%d/%m/%Y")
                 
                 patient_info = {
                     'patient_name': p_name,
-                    'spouse_name': '',
-                    'pin': str(p_row.get('Sample ID', '')),
-                    'age': '',
-                    'sample_number': str(p_row.get('Sample ID', '')),
-                    'referring_clinician': str(p_row.get('EMBRYOLOGIST NAME', '')),
+                    'spouse_name': get_clean_value(p_row, ['Spouse Name', 'Husband Name', 'Partner Name']),
+                    'pin': get_clean_value(p_row, ['Sample ID', 'PIN', 'Patient ID']),
+                    'age': get_clean_value(p_row, ['Age', 'Patient Age']),
+                    'sample_number': get_clean_value(p_row, ['Sample ID', 'Sample No']),
+                    'referring_clinician': get_clean_value(p_row, ['EMBRYOLOGIST NAME', 'Referring Clinician', 'Clinician', 'Doctor']),
                     'biopsy_date': b_date,
-                    'hospital_clinic': str(p_row.get('Center name', '')),
+                    'hospital_clinic': get_clean_value(p_row, ['Center name', 'Hospital', 'Clinic', 'Center']),
                     'sample_collection_date': b_date,
-                    'specimen': 'Day 6 Trophectoderm Biopsy',
-                    'sample_receipt_date': str(p_row.get('Date Sample Received', '')).split(' ')[0] if pd.notnull(p_row.get('Date Sample Received')) else '',
-                    'biopsy_performed_by': str(p_row.get('EMBRYOLOGIST NAME', '')),
-                    'report_date': datetime.now().strftime("%d-%m-%Y"),
-                    'indication': str(p_row.get('Remarks', '')) if pd.notnull(p_row.get('Remarks')) else ""
+                    'specimen': get_clean_value(p_row, ['Specimen Type', 'Sample Type'], 'Day 6 Trophectoderm Biopsy'),
+                    'sample_receipt_date': r_date,
+                    'biopsy_performed_by': get_clean_value(p_row, ['EMBRYOLOGIST NAME', 'Biologist']),
+                    'report_date': rep_date,
+                    'indication': get_clean_value(p_row, ['Indication', 'Clinical Indication']) # Removed 'Remarks' to avoid random data
                 }
                 
                 # Find matching embryos
-                norm_p_name = p_name.split('(' )[0].translate(str.maketrans('', '', ' -')).upper()
+                # Robust Normalization: Remove all non-alphanumeric characters
+                import re
+                def normalize_str(s):
+                    if not s: return ""
+                    return re.sub(r'[^A-Z0-9]', '', str(s).upper())
+
+                norm_p_name = normalize_str(p_name)
+                norm_sample_id = normalize_str(p_row.get('Sample ID', ''))
+                
                 embryos = []
                 
                 for _, s_row in df_summary.iterrows():
                     sample_orig = str(s_row.get('Sample name', ''))
-                    sample_name = sample_orig.upper()
+                    norm_s_name = normalize_str(sample_orig)
                     
-                    if norm_p_name in sample_name.replace('-', ''):
+                    # Enhanced Matching Logic: Check Sample ID first (more specific), then Patient Name
+                    match = False
+                    if norm_sample_id and norm_sample_id in norm_s_name:
+                        match = True
+                    elif norm_p_name and norm_p_name in norm_s_name:
+                        match = True
+                    
+                    if match:
                         # Extract embryo ID
                         base_id = sample_orig.split('_')[0]
                         embryo_id = base_id.split('-')[-1] if '-' in base_id else base_id
@@ -1811,16 +1871,86 @@ class PGTAReportGeneratorApp(QMainWindow):
                         # Determine interpretation
                         conclusion = str(s_row.get('Conclusion', ''))
                         interp = "Euploid"
-                        if "ABNORMAL" in conclusion.upper():
+                        
+                        conclusion_upper = conclusion.upper()
+                        if "(-)" in conclusion:
+                             interp = "Inconclusive"
+                        elif "CHAOTIC" in conclusion_upper:
+                             interp = "Chaotic embryo" 
+                        elif "ABNORMAL" in conclusion_upper:
                             interp = "Aneuploid"
-                        elif "MOSAIC" in conclusion.upper():
+                        elif "MOSAIC" in conclusion_upper:
                             interp = "Low level mosaic"
                         
-                        # Parse result for chromosome statuses
+                        # Advanced Parsing for Chromosome Statuses
+                        # Example: del(5)(p15.33q12.3)(~64.50Mb,~57%)
                         res_sum = str(s_row.get('Result', ''))
                         chr_statuses = {str(i): 'N' for i in range(1, 23)}
+                        mosaic_percentages = {}
+
+                        def parse_complex_result(r_str):
+                            c_map = {}
+                            m_map = {}
+                            if not r_str or r_str.lower() == 'nan': return c_map, m_map
+                            
+                            # Intelligent Split: Split by comma ONLY if followed by a keyword (del, dup, mos, +, -)
+                            # This keeps "del(5)(... , ~57%)" together but splits "del(5)... , del(10)..."
+                            parts = re.split(r',\s*(?=(?:del|dup|mos|[+-]|Monosomy|Trisomy))', r_str, flags=re.IGNORECASE)
+                            
+                            for part in parts:
+                                part = part.strip()
+                                if not part: continue
+                                
+                                # Regex for del/dup format: del(5)(...)
+                                # Capture: Type(freq), Chr
+                                match = re.search(r'(del|dup|mos)\D*?(\d+|X|Y)', part, re.IGNORECASE)
+                                if match:
+                                    etype = match.group(1).lower() # del/dup
+                                    chrom = match.group(2)
+                                    
+                                    # Determine Status - Seg check looks for p/q band or 'Mb'
+                                    is_seg = bool(re.search(r'([pq]\d|mb)', part, re.IGNORECASE))
+                                    status = 'N'
+                                    
+                                    if 'del' in etype:
+                                        status = 'SL' if is_seg else 'L'
+                                    elif 'dup' in etype:
+                                        status = 'SG' if is_seg else 'G'
+                                    elif 'mos' in etype:
+                                        status = 'M' # Generic Mosaic
+                                        
+                                    # Update Mosaic Percentage
+                                    # Look for ~XX% or just XX%
+                                    mos_match = re.search(r'[~]*(\d+)%', part)
+                                    if mos_match:
+                                        m_map[chrom] = mos_match.group(1)
+                                        # Use mosaic specific codes if mosaic detected
+                                        if 'del' in etype: status = 'SML' if is_seg else 'ML'
+                                        if 'dup' in etype: status = 'SMG' if is_seg else 'MG'
+                                    
+                                    c_map[chrom] = status
+                                    continue
+                                
+                                # Fallback/Alternative for simple format: Monosomy-5 or -5
+                                # Check for Leading + or -
+                                if part.startswith('+'):
+                                     # Gain/Trisomy
+                                     ch = part.replace('+', '').strip()
+                                     if ch in chr_statuses: c_map[ch] = 'G'
+                                elif part.startswith('-'):
+                                     # Loss/Monosomy
+                                     ch = part.replace('-', '').strip()
+                                     if ch in chr_statuses: c_map[ch] = 'L'
+                                     
+                            
+                            return c_map, m_map
+
+                        p_stats, p_mos = parse_complex_result(res_sum)
+                        chr_statuses.update(p_stats)
+                        mosaic_percentages.update(p_mos)
                         
-                        if '-' in res_sum:
+                        # Legacy Dash fallback if complex parse found nothing and dash exists
+                        if not p_stats and '-' in res_sum and not 'del' in res_sum.lower():
                             parts = res_sum.split('-')
                             if len(parts) >= 2:
                                 s_type = parts[0]
@@ -1829,8 +1959,86 @@ class PGTAReportGeneratorApp(QMainWindow):
                                     ch = ch.strip()
                                     if ch in chr_statuses:
                                         chr_statuses[ch] = s_type
+                                        p_stats[ch] = s_type # Update local stats for generator
+
+                        # --- Phase 4: Advanced Autosomes String Generator ---
+                        def generate_autosomes_string(stats, mosaic_map):
+                            if not stats: return "Normal" # or handle as Euploid logic below
+                            
+                            # Sort keys: 1-22, X, Y
+                            def sort_key(k):
+                                if k.isdigit(): return int(k)
+                                if k.upper() == 'X': return 23
+                                if k.upper() == 'Y': return 24
+                                return 25
+                            
+                            sorted_chrs = sorted(stats.keys(), key=sort_key)
+                            
+                            # Logic: If SINGLE event -> Verbose. If MULTIPLE -> Concise.
+                            is_multiple = len(sorted_chrs) > 1
+                            parts = []
+                            
+                            for ch in sorted_chrs:
+                                st = stats[ch]
+                                mos_val = mosaic_map.get(ch, '')
+                                
+                                if is_multiple:
+                                    # Format: "1 SG, 11 SG, 21 G"
+                                    # If mosaic, maybe add %? User example "dup(1)..., +21: 1 SG, ... 21 G" (Red color)
+                                    # User example also showed "dup(9)...: 9 chormosome..." when it was arguably single line in example?
+                                    # Wait, the user example:
+                                    # "dup(1)...,dup(11)...,dup(13)...,+21: 1 SG, 11 SG, 13 SG, 21 G" -> Concise for multiple
+                                    parts.append(f"{ch} {st}")
+                                else:
+                                    # Format: "16 chromosome CNV status L"
+                                    # Or "1 chromosome, CNV status SG"
+                                    # Or "15 chromosome, CNV status MG, Mosaic(%) 30"
+                                    base = f"{ch} chromosome, CNV status {st}"
+                                    if mos_val:
+                                        base += f", Mosaic(%) {mos_val}"
+                                    parts.append(base)
+                            
+                            return ", ".join(parts)
+
+                        # Autosomes Logic
+                        # If Euploid -> Force "Normal" (User request: "Automsomes - Euploid ( Normal )")
+                        # If Abnormal -> Generated String
+                        # Override logic:
+                        autosomes_val = ""
+                        if interp == "Euploid":
+                             autosomes_val = "Euploid ( Normal )"
+                        else:
+                             # Try to generate from stats first
+                             generated = generate_autosomes_string(p_stats, p_mos)
+                             if generated != "Normal":
+                                 autosomes_val = generated
+                             else:
+                                 # Fallback to result string if parsing failed but it's not euploid
+                                 autosomes_val = res_sum if res_sum else conclusion
+
+                        # --- Phase 4: Result Description Mapping ---
+                        # Map short 'interp' to long description for the PDF body
+                        long_desc = "The embryo contains normal chromosome complement" # Default
+                        if interp == "Aneuploid":
+                            long_desc = "The embryo contains abnormal chromosome complement"
+                        elif interp == "Chaotic embryo":
+                            long_desc = "The embryo contains abnormal chromosome complement" # Grouped as abnormal? Or keep chaotic? Request says: "EMBRYO RESULT PAGE (Result): Mention in black colour... The embryo contains abnormal..."
+                            # Wait, "Chaotic embryo (Red colour)" in INTERPRETATION. 
+                            # But in RESULT PAGE: "The embryo contains abnormal chromosome complement" seems to be the target for Aneuploid/Chaotic?
+                            # Let's map Chaotic to Abnormal text for the "Result" row, but keep Interpretation as Chaotic.
+                            long_desc = "The embryo contains abnormal chromosome complement"
+                        elif "Mosaic" in interp:
+                            long_desc = "The embryo contains mosaic chromosome complement"
+                        elif interp == "Inconclusive":
+                            long_desc = "Inconclusive"
                         
-                        # Auto-match CNV image
+                        # --- Phase 4: Sex Chromosomes Logic ---
+                        sex_chr_val = "Normal"
+                        # Check X or Y in stats
+                        if 'X' in p_stats or 'Y' in p_stats:
+                            sex_chr_val = "Abnormal"
+
+                        # Auto-match CNV image (Restored)
                         cnv_image_path = None
                         sample_base = sample_orig.split('_')[0]
                         if os.path.exists(file_dir):
@@ -1843,12 +2051,13 @@ class PGTAReportGeneratorApp(QMainWindow):
                             'embryo_id': embryo_id,
                             'result_summary': res_sum,
                             'interpretation': interp,
-                            'result_description': conclusion,
-                            'autosomes': conclusion,
+                            'result_description': long_desc, # Mapped long text
+                            'autosomes': autosomes_val,
+                            'sex_chromosomes': sex_chr_val,
                             'mtcopy': str(s_row.get('MTcopy', 'NA')),
                             'cnv_image_path': cnv_image_path,
                             'chromosome_statuses': chr_statuses,
-                            'mosaic_percentages': {}
+                            'mosaic_percentages': mosaic_percentages # Pass properly
                         })
                 
                 if embryos:
@@ -1901,18 +2110,27 @@ class PGTAReportGeneratorApp(QMainWindow):
         patient_form = QFormLayout()
         patient_group.setLayout(patient_form)
     
-        self.batch_patient_name = QLineEdit(data['patient_info']['patient_name'])
-        self.batch_spouse_name = QLineEdit(data['patient_info'].get('spouse_name', ''))
-        self.batch_pin = QLineEdit(data['patient_info']['pin'])
-        self.batch_age = QLineEdit(data['patient_info'].get('age', ''))
-        self.batch_sample_number = QLineEdit(data['patient_info']['sample_number'])
-        self.batch_referring_clinician = QLineEdit(data['patient_info']['referring_clinician'])
+        self.batch_patient_name = QTextEdit(data['patient_info']['patient_name'])
+        self.batch_patient_name.setMaximumHeight(40)
+        self.batch_spouse_name = QTextEdit(data['patient_info'].get('spouse_name', ''))
+        self.batch_spouse_name.setMaximumHeight(40)
+        self.batch_pin = QTextEdit(data['patient_info']['pin'])
+        self.batch_pin.setMaximumHeight(40)
+        self.batch_age = QTextEdit(data['patient_info'].get('age', ''))
+        self.batch_age.setMaximumHeight(40)
+        self.batch_sample_number = QTextEdit(data['patient_info']['sample_number'])
+        self.batch_sample_number.setMaximumHeight(40)
+        self.batch_referring_clinician = QTextEdit(data['patient_info']['referring_clinician'])
+        self.batch_referring_clinician.setMaximumHeight(40)
         self.batch_biopsy_date = QLineEdit(data['patient_info']['biopsy_date'])
-        self.batch_hospital = QLineEdit(data['patient_info']['hospital_clinic'])
+        self.batch_hospital = QTextEdit(data['patient_info']['hospital_clinic'])
+        self.batch_hospital.setMaximumHeight(40)
         self.batch_sample_collection_date = QLineEdit(data['patient_info'].get('sample_collection_date', ''))
-        self.batch_specimen = QLineEdit(data['patient_info'].get('specimen', 'Day 6 Trophectoderm Biopsy'))
+        self.batch_specimen = QTextEdit(data['patient_info'].get('specimen', 'Day 6 Trophectoderm Biopsy'))
+        self.batch_specimen.setMaximumHeight(40)
         self.batch_sample_receipt_date = QLineEdit(data['patient_info'].get('sample_receipt_date', ''))
-        self.batch_biopsy_performed_by = QLineEdit(data['patient_info'].get('biopsy_performed_by', ''))
+        self.batch_biopsy_performed_by = QTextEdit(data['patient_info'].get('biopsy_performed_by', ''))
+        self.batch_biopsy_performed_by.setMaximumHeight(40)
         self.batch_report_date = QLineEdit(data['patient_info'].get('report_date', datetime.now().strftime("%d-%m-%Y")))
         self.batch_indication = QTextEdit(data['patient_info'].get('indication', ''))
         self.batch_indication.setMaximumHeight(80)
@@ -1959,8 +2177,10 @@ class PGTAReportGeneratorApp(QMainWindow):
             e_result_desc.setMaximumHeight(60)
             e_autosomes = QLineEdit(embryo.get('autosomes', ''))
             e_sex_chr = QLineEdit(embryo.get('sex_chromosomes', 'Normal'))
-            e_interp = QComboBox()
-            e_interp.addItems(["Euploid", "Aneuploid", "Low level mosaic", "High level mosaic", "Complex mosaic"])
+            e_interp = ClickOnlyComboBox()
+            e_interp.addItems(["NA", "Euploid", "Aneuploid", "Low level mosaic", "High level mosaic", "Complex mosaic", "Manual Entry"])
+            e_interp.setEditable(True)
+            e_interp.setInsertPolicy(ClickOnlyComboBox.InsertPolicy.NoInsert)
             e_interp.setCurrentText(embryo['interpretation'])
             e_mtcopy = QLineEdit(embryo['mtcopy'])
         
@@ -2029,8 +2249,9 @@ class PGTAReportGeneratorApp(QMainWindow):
                 chr_grid.addWidget(QLabel(s_j), row, col_base)
                 
                 # Status Combo
-                chr_combo = QComboBox()
-                chr_combo.addItems(["N", "G", "L", "SG", "SL", "M", "MG", "ML", "SMG", "SML"])
+                chr_combo = ClickOnlyComboBox()
+                chr_combo.setEditable(True) # Manual Entry Enabled
+                chr_combo.addItems(["N", "G", "L", "SG", "SL", "M", "MG", "ML", "SMG", "SML", "NA"])
                 chr_combo.setCurrentText(chr_statuses.get(s_j, 'N'))
                 chr_combo.currentTextChanged.connect(self.update_batch_preview)
                 chr_grid.addWidget(chr_combo, row, col_base + 1)
@@ -2098,25 +2319,25 @@ class PGTAReportGeneratorApp(QMainWindow):
             
         def clean(val):
             if val is None: return ""
-            s = str(val).strip()
+            s = str(val).strip(' \t\r\f\v') # Preserves newlines (\n)
             return "" if s.lower() == "nan" else s
 
         idx = self.current_batch_index
         data = self.bulk_patient_data_list[idx]
     
         # Update ALL patient info fields
-        data['patient_info']['patient_name'] = clean(self.batch_patient_name.text())
-        data['patient_info']['spouse_name'] = clean(self.batch_spouse_name.text())
-        data['patient_info']['pin'] = clean(self.batch_pin.text())
-        data['patient_info']['age'] = clean(self.batch_age.text())
-        data['patient_info']['sample_number'] = clean(self.batch_sample_number.text())
-        data['patient_info']['referring_clinician'] = clean(self.batch_referring_clinician.text())
+        data['patient_info']['patient_name'] = clean(self.batch_patient_name.toPlainText())
+        data['patient_info']['spouse_name'] = clean(self.batch_spouse_name.toPlainText())
+        data['patient_info']['pin'] = clean(self.batch_pin.toPlainText())
+        data['patient_info']['age'] = clean(self.batch_age.toPlainText())
+        data['patient_info']['sample_number'] = clean(self.batch_sample_number.toPlainText())
+        data['patient_info']['referring_clinician'] = clean(self.batch_referring_clinician.toPlainText())
         data['patient_info']['biopsy_date'] = clean(self.batch_biopsy_date.text())
-        data['patient_info']['hospital_clinic'] = clean(self.batch_hospital.text())
+        data['patient_info']['hospital_clinic'] = clean(self.batch_hospital.toPlainText())
         data['patient_info']['sample_collection_date'] = clean(self.batch_sample_collection_date.text())
-        data['patient_info']['specimen'] = clean(self.batch_specimen.text())
+        data['patient_info']['specimen'] = clean(self.batch_specimen.toPlainText())
         data['patient_info']['sample_receipt_date'] = clean(self.batch_sample_receipt_date.text())
-        data['patient_info']['biopsy_performed_by'] = clean(self.batch_biopsy_performed_by.text())
+        data['patient_info']['biopsy_performed_by'] = clean(self.batch_biopsy_performed_by.toPlainText())
         data['patient_info']['report_date'] = clean(self.batch_report_date.text())
         data['patient_info']['indication'] = clean(self.batch_indication.toPlainText())
     
@@ -2169,8 +2390,12 @@ class PGTAReportGeneratorApp(QMainWindow):
         """Save individual patient as JSON draft"""
         if not hasattr(self, 'current_batch_index'):
             return
-    
+            
         idx = self.current_batch_index
+        # Fix for KeyError: check if index is valid before access
+        if idx < 0 or idx >= len(self.bulk_patient_data_list):
+            return
+
         data = self.bulk_patient_data_list[idx]
     
         p_name = data['patient_info']['patient_name'].replace(' ', '_')
@@ -2209,18 +2434,18 @@ class PGTAReportGeneratorApp(QMainWindow):
 
         # Gather data from batch editor fields (Live data, not stored data)
         p_data = {
-            'patient_name': self.batch_patient_name.text(),
-            'spouse_name': self.batch_spouse_name.text(),
-            'pin': self.batch_pin.text(),
-            'age': self.batch_age.text(),
-            'sample_number': self.batch_sample_number.text(),
-            'referring_clinician': self.batch_referring_clinician.text(),
+            'patient_name': self.batch_patient_name.toPlainText(),
+            'spouse_name': self.batch_spouse_name.toPlainText(),
+            'pin': self.batch_pin.toPlainText(),
+            'age': self.batch_age.toPlainText(),
+            'sample_number': self.batch_sample_number.toPlainText(),
+            'referring_clinician': self.batch_referring_clinician.toPlainText(),
             'biopsy_date': self.batch_biopsy_date.text(),
-            'hospital_clinic': self.batch_hospital.text(),
+            'hospital_clinic': self.batch_hospital.toPlainText(),
             'sample_collection_date': self.batch_sample_collection_date.text(),
-            'specimen': self.batch_specimen.text(),
+            'specimen': self.batch_specimen.toPlainText(),
             'sample_receipt_date': self.batch_sample_receipt_date.text(),
-            'biopsy_performed_by': self.batch_biopsy_performed_by.text(),
+            'biopsy_performed_by': self.batch_biopsy_performed_by.toPlainText(),
             'report_date': self.batch_report_date.text(),
             'indication': self.batch_indication.toPlainText()
         }
