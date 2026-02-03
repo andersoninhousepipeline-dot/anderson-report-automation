@@ -211,8 +211,8 @@ class PGTADocxGenerator:
         
         doc.add_paragraph() # Spacer
         
-        # Patient Info Table [85, 12, 146, 85, 12, 150]
-        info_table = doc.add_table(rows=7, cols=6)
+        # Patient Info Table [85, 12, 146, 85, 12, 150] - 6 rows (spouse name combined with patient name)
+        info_table = doc.add_table(rows=6, cols=6)
         self._set_table_fixed_layout(info_table)
         self._set_column_widths(info_table, [85, 12, 146, 85, 12, 150])
         self._populate_patient_table(info_table, patient_data)
@@ -283,9 +283,13 @@ class PGTADocxGenerator:
 
     def _populate_patient_table(self, table, data):
         """Standard Patient Info Population Logic"""
+        # Combine patient name and spouse name on same line
+        patient_name = self._clean(data.get('patient_name'))
+        spouse_name = self._clean(data.get('spouse_name'))
+        combined_name = f"{patient_name} {spouse_name}".strip() if spouse_name else patient_name
+        
         rows_map = [
-            ("Patient name", "patient_name", "PIN", "pin"),
-            (None, "spouse_name", None, None),
+            ("Patient name", combined_name, "PIN", "pin"),
             ("Date of Birth/ Age", "age", "Sample Number", "sample_number"),
             ("Referring Clinician", "referring_clinician", "Biopsy date", "biopsy_date"),
             ("Hospital/Clinic", "hospital_clinic", "Sample collection date", "sample_collection_date"),
@@ -300,8 +304,12 @@ class PGTADocxGenerator:
             if l1: row.cells[0].text = l1; row.cells[1].text = ":"
             if l2: row.cells[3].text = l2; row.cells[4].text = ":"
             
-            # Populate cleaned values
-            if v1: row.cells[2].text = self._clean(data.get(v1))
+            # Populate cleaned values - first row has combined name directly
+            if v1: 
+                if r_idx == 0:  # First row - combined name already a string
+                    row.cells[2].text = v1
+                else:
+                    row.cells[2].text = self._clean(data.get(v1))
             if v2: row.cells[5].text = self._clean(data.get(v2))
             
             for cell in row.cells:

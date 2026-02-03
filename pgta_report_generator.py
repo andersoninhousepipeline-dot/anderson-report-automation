@@ -362,6 +362,8 @@ class PGTAReportGeneratorApp(QMainWindow):
         self.patient_name_input.setMaximumHeight(45)
         self.spouse_name_input = QTextEdit()
         self.spouse_name_input.setMaximumHeight(45)
+        self.spouse_name_input.setPlaceholderText("w/o")
+        self.spouse_name_input.setText("w/o")  # Default value, editable by user
         self.pin_input = QTextEdit()
         self.pin_input.setMaximumHeight(40)
         self.age_input = QTextEdit()
@@ -1946,7 +1948,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                 
                 patient_info = {
                     'patient_name': p_name,
-                    'spouse_name': get_clean_value(p_row, ['Spouse Name', 'Husband Name', 'Partner Name']),
+                    'spouse_name': get_clean_value(p_row, ['Spouse Name', 'Husband Name', 'Partner Name']) or 'w/o',
                     'pin': get_clean_value(p_row, ['Sample ID', 'PIN', 'Patient ID']),
                     'age': get_clean_value(p_row, ['Age', 'Patient Age']),
                     'sample_number': '',  # Not extracted from Excel - user must fill manually
@@ -2281,8 +2283,10 @@ class PGTAReportGeneratorApp(QMainWindow):
     
         self.batch_patient_name = QTextEdit(data['patient_info']['patient_name'])
         self.batch_patient_name.setMaximumHeight(40)
-        self.batch_spouse_name = QTextEdit(data['patient_info'].get('spouse_name', ''))
+        spouse_val = data['patient_info'].get('spouse_name', '') or 'w/o'
+        self.batch_spouse_name = QTextEdit(spouse_val)
         self.batch_spouse_name.setMaximumHeight(40)
+        self.batch_spouse_name.setPlaceholderText("w/o")
         self.batch_pin = QTextEdit(data['patient_info']['pin'])
         self.batch_pin.setMaximumHeight(40)
         self.batch_age = QTextEdit(data['patient_info'].get('age', ''))
