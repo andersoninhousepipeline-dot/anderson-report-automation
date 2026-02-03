@@ -61,8 +61,26 @@ except ImportError:
     PDFPLUMBER_AVAILABLE = False
     print("Warning: pdfplumber not found. TRF PDF verification may not work.")
 
+# EasyOCR - Simple, accurate, works offline (RECOMMENDED)
+try:
+    import easyocr
+    EASYOCR_AVAILABLE = True
+except ImportError:
+    EASYOCR_AVAILABLE = False
+    print("Info: easyocr not found. Install for better OCR: pip install easyocr")
+
+# Ollama - Local LLM with vision (LLaVA model)
+try:
+    import requests
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+
+import base64
 import re
 from difflib import SequenceMatcher
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class ClickOnlyComboBox(QComboBox):
     """Subclass of QComboBox that ignores mouse wheel events to prevent accidental changes when scrolling."""
@@ -1034,6 +1052,48 @@ class PGTAReportGeneratorApp(QMainWindow):
         draft_layout.addWidget(save_all_draft_btn)
         draft_layout.addWidget(load_draft_btn)
         left_layout.addLayout(draft_layout)
+        
+        # Bulk TRF Verification Section
+        trf_bulk_group = QGroupBox("📋 Bulk TRF Verification")
+        trf_bulk_layout = QVBoxLayout()
+        trf_bulk_group.setLayout(trf_bulk_layout)
+        
+        # TRF upload row
+        trf_upload_row = QHBoxLayout()
+        self.bulk_trf_label = QLabel("No TRFs uploaded")
+        self.bulk_trf_label.setStyleSheet("color: #666; font-style: italic;")
+        trf_upload_row.addWidget(self.bulk_trf_label, 1)
+        
+        upload_bulk_trf_btn = QPushButton("📁 Upload TRFs")
+        upload_bulk_trf_btn.clicked.connect(self.upload_bulk_trf)
+        trf_upload_row.addWidget(upload_bulk_trf_btn)
+        trf_bulk_layout.addLayout(trf_upload_row)
+        
+        # TRF action buttons
+        trf_action_row = QHBoxLayout()
+        self.bulk_trf_verify_all_btn = QPushButton("🔄 Verify All")
+        self.bulk_trf_verify_all_btn.setEnabled(False)
+        self.bulk_trf_verify_all_btn.clicked.connect(self.verify_all_bulk_trf)
+        trf_action_row.addWidget(self.bulk_trf_verify_all_btn)
+        
+        trf_mgmt_btn = QPushButton("⚙️ TRF Manager")
+        trf_mgmt_btn.clicked.connect(self.show_bulk_trf_verification_dialog)
+        trf_action_row.addWidget(trf_mgmt_btn)
+        trf_bulk_layout.addLayout(trf_action_row)
+        
+        # TRF status display
+        self.bulk_trf_status = QTextBrowser()
+        self.bulk_trf_status.setMaximumHeight(60)
+        self.bulk_trf_status.setStyleSheet("background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;")
+        self.bulk_trf_status.setHtml("<i style='color:#888;'>Upload TRF files to verify patient data</i>")
+        trf_bulk_layout.addWidget(self.bulk_trf_status)
+        
+        left_layout.addWidget(trf_bulk_group)
+        
+        # Initialize bulk TRF storage
+        self.bulk_trf_files = []
+        self.patient_trf_mapping = {}
+        self.pending_bulk_trfs = []
         
         # Logo selection for bulk
         logo_layout = QHBoxLayout()
@@ -2306,6 +2366,1096 @@ class PGTAReportGeneratorApp(QMainWindow):
             self.batch_trf_result_text.setHtml("<span style='color:#28a745;'>✅ All fields verified!</span>")
         else:
             self.batch_trf_result_text.setHtml("<span style='color:#ffc107;'>⚠️ Review completed. Some fields may need attention.</span>")
+    
+    # ==================== AI-Enhanced TRF Extraction (Open Source) ====================
+    
+    def init_easyocr_reader(self):
+        """Initialize EasyOCR reader (lazy loading for performance)"""
+        if not hasattr(self, '_easyocr_reader'):
+            if EASYOCR_AVAILABLE:
+                try:
+                    self._easyocr_reader = easyocr.Reader(['en'], gpu=False)  # CPU mode for compatibility
+                except Exception as e:
+                    print(f"EasyOCR init error: {e}")
+                    self._easyocr_reader = None
+            else:
+                self._easyocr_reader = None
+        return self._easyocr_reader
+    
+    def extract_text_with_easyocr(self, file_path):
+        """Extract text from image using EasyOCR (open-source, offline)"""
+        if not EASYOCR_AVAILABLE:
+            return None, "EasyOCR not available. Install: pip install easyocr"
+        
+        try:
+            reader = self.init_easyocr_reader()
+            if not reader:
+                return None, "Failed to initialize EasyOCR"
+            
+            file_ext = os.path.splitext(file_path)[1].lower()
+            
+            # For PDFs, convert to image first
+            if file_ext == '.pdf':
+                if PDFPLUMBER_AVAILABLE:
+                    with pdfplumber.open(file_path) as pdf:
+                        if pdf.pages:
+                            page = pdf.pages[0]
+                            img = page.to_image(resolution=200)
+                            import io
+                            img_buffer = io.BytesIO()
+                            img.save(img_buffer, format='PNG')
+                            img_buffer.seek(0)
+                            # EasyOCR can read from bytes
+                            results = reader.readtext(img_buffer.getvalue())
+                else:
+                    return None, "PDF processing requires pdfplumber"
+            else:
+                results = reader.readtext(file_path)
+            
+            # Combine all detected text
+            text_lines = [item[1] for item in results]
+            full_text = '\n'.join(text_lines)
+            
+            return full_text, None
+            
+        except Exception as e:
+            return None, f"EasyOCR error: {str(e)}"
+    
+    def extract_text_with_ollama(self, file_path):
+        """Extract text from TRF using Ollama with LLaVA vision model (local AI)"""
+        if not OLLAMA_AVAILABLE:
+            return None, "requests library not available"
+        
+        # Check if Ollama is running
+        ollama_url = self.settings.value('ollama_url', 'http://localhost:11434')
+        
+        try:
+            # Test connection
+            response = requests.get(f"{ollama_url}/api/tags", timeout=5)
+            if response.status_code != 200:
+                return None, f"Ollama not running at {ollama_url}"
+        except requests.exceptions.ConnectionError:
+            return None, f"Cannot connect to Ollama at {ollama_url}. Start Ollama first: ollama serve"
+        except Exception as e:
+            return None, f"Ollama connection error: {str(e)}"
+        
+        try:
+            file_ext = os.path.splitext(file_path)[1].lower()
+            
+            # Read image and convert to base64
+            if file_ext == '.pdf':
+                if PDFPLUMBER_AVAILABLE:
+                    with pdfplumber.open(file_path) as pdf:
+                        if pdf.pages:
+                            page = pdf.pages[0]
+                            img = page.to_image(resolution=150)
+                            import io
+                            img_buffer = io.BytesIO()
+                            img.save(img_buffer, format='PNG')
+                            img_data = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+                else:
+                    return None, "PDF processing requires pdfplumber"
+            else:
+                with open(file_path, 'rb') as f:
+                    img_data = base64.b64encode(f.read()).decode('utf-8')
+            
+            # Get model name from settings (default: llava)
+            model_name = self.settings.value('ollama_vision_model', 'llava')
+            
+            # Call Ollama API with vision
+            prompt = """You are extracting patient information from a medical Test Request Form (TRF).
+Extract these fields and return ONLY a JSON object:
+{
+    "patient_name": "full patient name",
+    "hospital_clinic": "hospital or clinic name", 
+    "pin": "sample ID or PIN number",
+    "biopsy_date": "date of biopsy (DD-MM-YYYY)",
+    "sample_receipt_date": "date received (DD-MM-YYYY)",
+    "referring_clinician": "doctor name"
+}
+Use null for fields not found. Return ONLY valid JSON."""
+
+            response = requests.post(
+                f"{ollama_url}/api/generate",
+                json={
+                    "model": model_name,
+                    "prompt": prompt,
+                    "images": [img_data],
+                    "stream": False,
+                    "options": {
+                        "temperature": 0.1
+                    }
+                },
+                timeout=120  # Vision models can be slow
+            )
+            
+            if response.status_code != 200:
+                return None, f"Ollama API error: {response.status_code}"
+            
+            result = response.json()
+            result_text = result.get('response', '')
+            
+            # Try to parse as JSON
+            try:
+                import json
+                # Find JSON in response
+                json_match = re.search(r'\{[^{}]*\}', result_text, re.DOTALL)
+                if json_match:
+                    extracted_data = json.loads(json_match.group())
+                    return extracted_data, None
+                else:
+                    return result_text, None
+            except json.JSONDecodeError:
+                return result_text, None
+                
+        except Exception as e:
+            return None, f"Ollama extraction error: {str(e)}"
+    
+    def extract_text_enhanced(self, file_path, method='auto'):
+        """Enhanced text extraction with multiple methods
+        
+        Methods:
+        - 'auto': Try best available method
+        - 'easyocr': Use EasyOCR (recommended, offline)
+        - 'ollama': Use Ollama LLaVA (local AI)
+        - 'tesseract': Use pytesseract (basic)
+        """
+        errors = []
+        
+        if method == 'auto':
+            # Try methods in order of preference
+            methods_to_try = []
+            
+            # Check settings for preferred method
+            preferred = self.settings.value('trf_extraction_method', 'easyocr')
+            
+            if preferred == 'ollama' and OLLAMA_AVAILABLE:
+                methods_to_try = ['ollama', 'easyocr', 'tesseract']
+            elif EASYOCR_AVAILABLE:
+                methods_to_try = ['easyocr', 'tesseract']
+            else:
+                methods_to_try = ['tesseract']
+            
+            for m in methods_to_try:
+                result, error = self.extract_text_enhanced(file_path, method=m)
+                if result:
+                    return result, None
+                if error:
+                    errors.append(f"{m}: {error}")
+            
+            return None, "All extraction methods failed: " + "; ".join(errors)
+        
+        elif method == 'easyocr':
+            return self.extract_text_with_easyocr(file_path)
+        
+        elif method == 'ollama':
+            return self.extract_text_with_ollama(file_path)
+        
+        elif method == 'tesseract':
+            return self.extract_text_from_trf(file_path)
+        
+        else:
+            return None, f"Unknown extraction method: {method}"
+    
+    def verify_with_ai(self, file_path, patient_data, use_ai=True):
+        """Enhanced verification using local AI when available"""
+        # Try Ollama extraction first if enabled (returns structured data)
+        if use_ai:
+            preferred_method = self.settings.value('trf_extraction_method', 'easyocr')
+            
+            if preferred_method == 'ollama' and OLLAMA_AVAILABLE:
+                ai_result, ai_error = self.extract_text_with_ollama(file_path)
+                if ai_result and isinstance(ai_result, dict):
+                    return self.compare_structured_data(ai_result, patient_data)
+        
+        # Fallback to OCR/text extraction
+        trf_text, error = self.extract_text_enhanced(file_path)
+        if error:
+            return [], False, False, error
+        
+        if isinstance(trf_text, dict):
+            # Ollama returned structured data
+            return self.compare_structured_data(trf_text, patient_data)
+        
+        results, all_correct, has_suggestions = self.verify_patient_data_enhanced(trf_text, patient_data)
+        return results, all_correct, has_suggestions, None
+    
+    def compare_structured_data(self, ai_data, patient_data):
+        """Compare AI-extracted structured data with patient data"""
+        results = []
+        all_correct = True
+        has_suggestions = False
+        
+        field_mapping = [
+            ('patient_name', 'Patient Name', 'patient_name_input'),
+            ('hospital_clinic', 'Hospital/Clinic', 'hospital_clinic_input'),
+            ('pin', 'PIN/Sample ID', 'pin_input'),
+            ('biopsy_date', 'Biopsy Date', 'biopsy_date_input'),
+            ('sample_receipt_date', 'Receipt Date', 'sample_receipt_date_input'),
+            ('referring_clinician', 'Referring Clinician', 'referring_clinician_input'),
+        ]
+        
+        for field_key, field_label, widget_name in field_mapping:
+            entered_value = patient_data.get(field_key, '') or ''
+            ai_value = ai_data.get(field_key) or ''
+            
+            # Clean values
+            entered_clean = str(entered_value).strip().lower()
+            ai_clean = str(ai_value).strip().lower() if ai_value else ''
+            
+            # Skip if both empty
+            if not entered_clean and not ai_clean:
+                results.append({
+                    'field': field_label,
+                    'field_key': field_key,
+                    'widget': widget_name,
+                    'status': 'skip',
+                    'entered': '(empty)',
+                    'trf_value': '(not found)',
+                    'message': 'No data',
+                    'icon': '⚪',
+                    'can_apply': False
+                })
+                continue
+            
+            # Check match using fuzzy matching
+            if entered_clean and ai_clean:
+                is_match, ratio = self.fuzzy_match(entered_clean, ai_clean, 0.8)
+                
+                if is_match:
+                    results.append({
+                        'field': field_label,
+                        'field_key': field_key,
+                        'widget': widget_name,
+                        'status': 'ok',
+                        'entered': entered_value,
+                        'trf_value': ai_value,
+                        'message': f'✓ Match ({int(ratio*100)}%)',
+                        'icon': '✅',
+                        'can_apply': False
+                    })
+                else:
+                    all_correct = False
+                    has_suggestions = True
+                    results.append({
+                        'field': field_label,
+                        'field_key': field_key,
+                        'widget': widget_name,
+                        'status': 'mismatch',
+                        'entered': entered_value,
+                        'trf_value': ai_value,
+                        'message': f'✗ Mismatch ({int(ratio*100)}%)',
+                        'icon': '❌',
+                        'can_apply': True
+                    })
+            elif ai_clean and not entered_clean:
+                # AI found value but nothing entered - suggest
+                has_suggestions = True
+                results.append({
+                    'field': field_label,
+                    'field_key': field_key,
+                    'widget': widget_name,
+                    'status': 'suggestion',
+                    'entered': '(empty)',
+                    'trf_value': ai_value,
+                    'message': '💡 Found in TRF (AI)',
+                    'icon': '💡',
+                    'can_apply': True
+                })
+            else:
+                # Entered but not in AI result
+                results.append({
+                    'field': field_label,
+                    'field_key': field_key,
+                    'widget': widget_name,
+                    'status': 'warning',
+                    'entered': entered_value,
+                    'trf_value': '(not found)',
+                    'message': '⚠ Not in TRF',
+                    'icon': '⚠️',
+                    'can_apply': False
+                })
+        
+        return results, all_correct, has_suggestions, None
+    
+    # ==================== Bulk TRF Verification ====================
+    
+    def upload_bulk_trf(self):
+        """Upload multiple TRF files for bulk verification"""
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Select Multiple TRF Documents",
+            "",
+            "TRF Files (*.pdf *.png *.jpg *.jpeg *.tiff *.bmp);;PDF Files (*.pdf);;Image Files (*.png *.jpg *.jpeg *.tiff *.bmp)"
+        )
+        
+        if file_paths:
+            self.bulk_trf_files = file_paths
+            self.bulk_trf_label.setText(f"{len(file_paths)} TRF files selected")
+            self.bulk_trf_label.setStyleSheet("color: #28a745; font-weight: bold;")
+            self.bulk_trf_verify_all_btn.setEnabled(True)
+            
+            # Show file list
+            file_names = [os.path.basename(f) for f in file_paths]
+            self.bulk_trf_status.setHtml(
+                f"<b>Selected TRF files ({len(file_paths)}):</b><br>" +
+                "<br>".join([f"📄 {name}" for name in file_names[:10]]) +
+                (f"<br><i>... and {len(file_paths) - 10} more</i>" if len(file_paths) > 10 else "")
+            )
+    
+    def verify_all_bulk_trf(self):
+        """Verify all uploaded TRFs against all patients in the batch"""
+        if not hasattr(self, 'bulk_trf_files') or not self.bulk_trf_files:
+            QMessageBox.warning(self, "No TRFs", "Please upload TRF files first.")
+            return
+        
+        if not hasattr(self, 'batch_patients_data') or not self.batch_patients_data:
+            QMessageBox.warning(self, "No Patients", "Please load patient data first using an Excel file.")
+            return
+        
+        # Show progress dialog
+        progress_dialog = QDialog(self)
+        progress_dialog.setWindowTitle("Bulk TRF Verification")
+        progress_dialog.setMinimumWidth(500)
+        progress_layout = QVBoxLayout()
+        progress_dialog.setLayout(progress_layout)
+        
+        status_label = QLabel("🔄 Processing TRF files...")
+        status_label.setStyleSheet("font-size: 14px; padding: 10px;")
+        progress_layout.addWidget(status_label)
+        
+        progress_bar = QProgressBar()
+        progress_bar.setMaximum(len(self.bulk_trf_files))
+        progress_layout.addWidget(progress_bar)
+        
+        results_text = QTextBrowser()
+        results_text.setMinimumHeight(300)
+        progress_layout.addWidget(results_text)
+        
+        close_btn = QPushButton("Close")
+        close_btn.setEnabled(False)
+        close_btn.clicked.connect(progress_dialog.accept)
+        progress_layout.addWidget(close_btn)
+        
+        progress_dialog.show()
+        QApplication.processEvents()
+        
+        # Process each TRF
+        all_results = []
+        matched_count = 0
+        unmatched_trfs = []
+        
+        # Get extraction method from settings
+        extraction_method = self.settings.value('trf_extraction_method', 'easyocr')
+        
+        for i, trf_path in enumerate(self.bulk_trf_files):
+            trf_name = os.path.basename(trf_path)
+            status_label.setText(f"🔄 Processing: {trf_name} ({i+1}/{len(self.bulk_trf_files)})")
+            progress_bar.setValue(i + 1)
+            QApplication.processEvents()
+            
+            # Extract data from TRF using selected method
+            trf_data = None
+            trf_text = None
+            
+            if extraction_method == 'ollama' and OLLAMA_AVAILABLE:
+                # Ollama returns structured data
+                trf_data, error = self.extract_text_with_ollama(trf_path)
+                if error or not isinstance(trf_data, dict):
+                    # Fallback to EasyOCR
+                    trf_text, error = self.extract_text_enhanced(trf_path, method='easyocr')
+                    trf_data = None
+            else:
+                # Use EasyOCR or Tesseract
+                trf_text, error = self.extract_text_enhanced(trf_path, method=extraction_method)
+            
+            if error and not trf_text and not trf_data:
+                unmatched_trfs.append((trf_name, f"Error: {error}"))
+                continue
+            
+            # Try to match with a patient
+            best_match = None
+            best_score = 0
+            
+            for patient_name, patient_data in self.batch_patients_data.items():
+                p_name = patient_data.get('patient_info', {}).get('patient_name', '')
+                p_pin = patient_data.get('patient_info', {}).get('pin', '')
+                
+                # Calculate match score
+                score = 0
+                if trf_data and isinstance(trf_data, dict):
+                    # AI extracted data
+                    trf_name_val = trf_data.get('patient_name', '') or ''
+                    trf_pin_val = trf_data.get('pin', '') or ''
+                    
+                    if p_name and trf_name_val:
+                        is_match, ratio = self.fuzzy_match(p_name, trf_name_val, 0.6)
+                        if is_match:
+                            score += ratio * 60
+                    
+                    if p_pin and trf_pin_val:
+                        if p_pin.lower() in trf_pin_val.lower() or trf_pin_val.lower() in p_pin.lower():
+                            score += 40
+                else:
+                    # Text-based matching
+                    if trf_text:
+                        if p_name:
+                            found, _ = self.find_in_text(trf_text, p_name)
+                            if found:
+                                score += 60
+                        if p_pin:
+                            found, _ = self.find_in_text(trf_text, p_pin)
+                            if found:
+                                score += 40
+                
+                if score > best_score:
+                    best_score = score
+                    best_match = (patient_name, patient_data)
+            
+            if best_match and best_score >= 50:
+                matched_count += 1
+                patient_name, patient_data = best_match
+                
+                # Store TRF association
+                if not hasattr(self, 'patient_trf_mapping'):
+                    self.patient_trf_mapping = {}
+                self.patient_trf_mapping[patient_name] = {
+                    'trf_path': trf_path,
+                    'trf_data': trf_data if isinstance(trf_data, dict) else None,
+                    'match_score': best_score
+                }
+                
+                all_results.append({
+                    'trf': trf_name,
+                    'patient': patient_name,
+                    'score': best_score,
+                    'status': 'matched'
+                })
+                
+                results_text.append(f"✅ <b>{trf_name}</b> → {patient_name} ({int(best_score)}% confidence)")
+            else:
+                unmatched_trfs.append((trf_name, "No matching patient found"))
+                all_results.append({
+                    'trf': trf_name,
+                    'patient': None,
+                    'score': best_score,
+                    'status': 'unmatched'
+                })
+                results_text.append(f"⚠️ <b>{trf_name}</b> - No match (best: {int(best_score)}%)")
+            
+            QApplication.processEvents()
+        
+        # Show summary
+        status_label.setText("✅ Bulk TRF verification complete!")
+        results_text.append(f"\n<hr><b>Summary:</b>")
+        results_text.append(f"• Total TRFs: {len(self.bulk_trf_files)}")
+        results_text.append(f"• Matched: {matched_count}")
+        results_text.append(f"• Unmatched: {len(unmatched_trfs)}")
+        
+        if unmatched_trfs:
+            results_text.append(f"\n<b>Unmatched TRFs:</b>")
+            for name, reason in unmatched_trfs:
+                results_text.append(f"  • {name}: {reason}")
+        
+        close_btn.setEnabled(True)
+        
+        # Store results
+        self.bulk_trf_results = all_results
+        
+        # Update main status
+        self.bulk_trf_status.setHtml(
+            f"<span style='color:#28a745;'>✅ Verified {len(self.bulk_trf_files)} TRFs: "
+            f"{matched_count} matched, {len(unmatched_trfs)} unmatched</span>"
+        )
+    
+    def show_bulk_trf_verification_dialog(self):
+        """Show comprehensive bulk TRF verification dialog"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Bulk TRF Verification")
+        dialog.setMinimumWidth(900)
+        dialog.setMinimumHeight(600)
+        
+        layout = QVBoxLayout()
+        dialog.setLayout(layout)
+        
+        # Header
+        header = QLabel("📋 Bulk TRF Verification")
+        header.setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px;")
+        layout.addWidget(header)
+        
+        # OCR/AI Settings
+        settings_group = QGroupBox("🔧 Extraction Settings (All Open Source - No API Keys Required)")
+        settings_layout = QVBoxLayout()
+        settings_group.setLayout(settings_layout)
+        
+        # Method selection
+        method_layout = QHBoxLayout()
+        method_layout.addWidget(QLabel("Extraction Method:"))
+        
+        self.extraction_method_combo = ClickOnlyComboBox()
+        methods = []
+        if EASYOCR_AVAILABLE:
+            methods.append(("EasyOCR (Recommended - Offline)", "easyocr"))
+        if OLLAMA_AVAILABLE:
+            methods.append(("Ollama LLaVA (Local AI - Best Accuracy)", "ollama"))
+        if TESSERACT_AVAILABLE:
+            methods.append(("Tesseract (Basic OCR)", "tesseract"))
+        
+        if not methods:
+            methods.append(("No OCR available - Install easyocr", "none"))
+        
+        for display, value in methods:
+            self.extraction_method_combo.addItem(display, value)
+        
+        # Set current from settings
+        current_method = self.settings.value('trf_extraction_method', 'easyocr')
+        for i in range(self.extraction_method_combo.count()):
+            if self.extraction_method_combo.itemData(i) == current_method:
+                self.extraction_method_combo.setCurrentIndex(i)
+                break
+        
+        self.extraction_method_combo.currentIndexChanged.connect(
+            lambda idx: self.settings.setValue('trf_extraction_method', self.extraction_method_combo.itemData(idx))
+        )
+        method_layout.addWidget(self.extraction_method_combo)
+        method_layout.addStretch()
+        settings_layout.addLayout(method_layout)
+        
+        # Ollama settings (if available)
+        if OLLAMA_AVAILABLE:
+            ollama_layout = QHBoxLayout()
+            ollama_layout.addWidget(QLabel("Ollama URL:"))
+            self.ollama_url_input = QLineEdit()
+            self.ollama_url_input.setText(self.settings.value('ollama_url', 'http://localhost:11434'))
+            self.ollama_url_input.setPlaceholderText("http://localhost:11434")
+            self.ollama_url_input.textChanged.connect(lambda t: self.settings.setValue('ollama_url', t))
+            ollama_layout.addWidget(self.ollama_url_input)
+            
+            ollama_layout.addWidget(QLabel("Model:"))
+            self.ollama_model_input = QLineEdit()
+            self.ollama_model_input.setText(self.settings.value('ollama_vision_model', 'llava'))
+            self.ollama_model_input.setPlaceholderText("llava, llava:13b, bakllava")
+            self.ollama_model_input.textChanged.connect(lambda t: self.settings.setValue('ollama_vision_model', t))
+            ollama_layout.addWidget(self.ollama_model_input)
+            
+            test_ollama_btn = QPushButton("Test Connection")
+            test_ollama_btn.clicked.connect(self.test_ollama_connection)
+            ollama_layout.addWidget(test_ollama_btn)
+            
+            settings_layout.addLayout(ollama_layout)
+        
+        # Status info
+        status_info = QLabel()
+        status_parts = []
+        if EASYOCR_AVAILABLE:
+            status_parts.append("✅ EasyOCR")
+        else:
+            status_parts.append("❌ EasyOCR (pip install easyocr)")
+        if OLLAMA_AVAILABLE:
+            status_parts.append("✅ Ollama support")
+        if TESSERACT_AVAILABLE:
+            status_parts.append("✅ Tesseract")
+        else:
+            status_parts.append("❌ Tesseract")
+        
+        status_info.setText("Available: " + " | ".join(status_parts))
+        status_info.setStyleSheet("color: #666; font-size: 11px; padding: 5px;")
+        settings_layout.addWidget(status_info)
+        
+        layout.addWidget(settings_group)
+        
+        # Splitter for list and details
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        
+        # Left side - Patient list with TRF status
+        left_widget = QWidget()
+        left_layout = QVBoxLayout()
+        left_widget.setLayout(left_layout)
+        
+        left_layout.addWidget(QLabel("<b>Patients & TRF Status:</b>"))
+        
+        self.trf_patient_list = QTableWidget()
+        self.trf_patient_list.setColumnCount(4)
+        self.trf_patient_list.setHorizontalHeaderLabels(["Patient", "PIN", "TRF Status", "Action"])
+        self.trf_patient_list.horizontalHeader().setStretchLastSection(True)
+        self.trf_patient_list.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.trf_patient_list.itemSelectionChanged.connect(self.on_trf_patient_selected)
+        left_layout.addWidget(self.trf_patient_list)
+        
+        splitter.addWidget(left_widget)
+        
+        # Right side - TRF details and verification
+        right_widget = QWidget()
+        right_layout = QVBoxLayout()
+        right_widget.setLayout(right_layout)
+        
+        right_layout.addWidget(QLabel("<b>Verification Details:</b>"))
+        
+        self.trf_details_text = QTextBrowser()
+        self.trf_details_text.setMinimumWidth(400)
+        right_layout.addWidget(self.trf_details_text)
+        
+        # Action buttons for selected patient
+        action_layout = QHBoxLayout()
+        
+        upload_single_btn = QPushButton("📄 Upload TRF for Selected")
+        upload_single_btn.clicked.connect(self.upload_trf_for_selected_patient)
+        action_layout.addWidget(upload_single_btn)
+        
+        verify_single_btn = QPushButton("✓ Verify Selected")
+        verify_single_btn.clicked.connect(self.verify_selected_patient_trf)
+        action_layout.addWidget(verify_single_btn)
+        
+        right_layout.addLayout(action_layout)
+        
+        splitter.addWidget(right_widget)
+        splitter.setSizes([450, 450])
+        
+        layout.addWidget(splitter)
+        
+        # Bottom buttons
+        bottom_layout = QHBoxLayout()
+        
+        bulk_upload_btn = QPushButton("📁 Upload Multiple TRFs")
+        bulk_upload_btn.clicked.connect(self.upload_bulk_trf_dialog)
+        bulk_upload_btn.setStyleSheet("padding: 8px 16px;")
+        bottom_layout.addWidget(bulk_upload_btn)
+        
+        auto_match_btn = QPushButton("🔄 Auto-Match All TRFs")
+        auto_match_btn.clicked.connect(self.auto_match_bulk_trfs)
+        auto_match_btn.setStyleSheet("padding: 8px 16px; background-color: #007bff; color: white;")
+        bottom_layout.addWidget(auto_match_btn)
+        
+        bottom_layout.addStretch()
+        
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        close_btn.setStyleSheet("padding: 8px 16px;")
+        bottom_layout.addWidget(close_btn)
+        
+        layout.addLayout(bottom_layout)
+        
+        # Populate patient list
+        self.populate_trf_patient_list()
+        
+        dialog.exec()
+    
+    def test_ollama_connection(self):
+        """Test connection to Ollama server"""
+        if not OLLAMA_AVAILABLE:
+            QMessageBox.warning(self, "Not Available", "requests library not installed")
+            return
+        
+        ollama_url = self.settings.value('ollama_url', 'http://localhost:11434')
+        
+        try:
+            response = requests.get(f"{ollama_url}/api/tags", timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                models = [m['name'] for m in data.get('models', [])]
+                vision_models = [m for m in models if any(v in m.lower() for v in ['llava', 'bakllava', 'moondream'])]
+                
+                msg = f"✅ Connected to Ollama at {ollama_url}\n\n"
+                msg += f"Total models: {len(models)}\n"
+                if vision_models:
+                    msg += f"\nVision models available:\n• " + "\n• ".join(vision_models[:5])
+                else:
+                    msg += "\n⚠️ No vision models found.\nInstall one: ollama pull llava"
+                
+                QMessageBox.information(self, "Ollama Connection", msg)
+            else:
+                QMessageBox.warning(self, "Connection Failed", f"Ollama returned status {response.status_code}")
+        except requests.exceptions.ConnectionError:
+            QMessageBox.warning(
+                self, 
+                "Connection Failed", 
+                f"Cannot connect to Ollama at {ollama_url}\n\n"
+                "Make sure Ollama is running:\n"
+                "1. Install: curl -fsSL https://ollama.com/install.sh | sh\n"
+                "2. Start: ollama serve\n"
+                "3. Pull vision model: ollama pull llava"
+            )
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Connection error: {str(e)}")
+    
+    def populate_trf_patient_list(self):
+        """Populate the TRF patient list table"""
+        if not hasattr(self, 'batch_patients_data') or not self.batch_patients_data:
+            return
+        
+        self.trf_patient_list.setRowCount(len(self.batch_patients_data))
+        
+        for i, (patient_name, data) in enumerate(self.batch_patients_data.items()):
+            p_info = data.get('patient_info', {})
+            
+            # Patient name
+            self.trf_patient_list.setItem(i, 0, QTableWidgetItem(p_info.get('patient_name', patient_name)))
+            
+            # PIN
+            self.trf_patient_list.setItem(i, 1, QTableWidgetItem(p_info.get('pin', '')))
+            
+            # TRF Status
+            trf_mapping = getattr(self, 'patient_trf_mapping', {})
+            if patient_name in trf_mapping:
+                status_item = QTableWidgetItem("✅ Linked")
+                status_item.setForeground(QColor('#28a745'))
+            else:
+                status_item = QTableWidgetItem("⚪ No TRF")
+                status_item.setForeground(QColor('#6c757d'))
+            self.trf_patient_list.setItem(i, 2, status_item)
+            
+            # Store patient key for later reference
+            self.trf_patient_list.item(i, 0).setData(Qt.ItemDataRole.UserRole, patient_name)
+    
+    def on_trf_patient_selected(self):
+        """Handle patient selection in TRF verification dialog"""
+        selected = self.trf_patient_list.selectedItems()
+        if not selected:
+            return
+        
+        row = selected[0].row()
+        patient_key = self.trf_patient_list.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        
+        if not patient_key or patient_key not in self.batch_patients_data:
+            return
+        
+        patient_data = self.batch_patients_data[patient_key]
+        p_info = patient_data.get('patient_info', {})
+        
+        # Show patient details
+        html = f"<h3>{p_info.get('patient_name', 'Unknown')}</h3>"
+        html += f"<p><b>PIN:</b> {p_info.get('pin', 'N/A')}</p>"
+        html += f"<p><b>Hospital:</b> {p_info.get('hospital_clinic', 'N/A')}</p>"
+        html += f"<p><b>Biopsy Date:</b> {p_info.get('biopsy_date', 'N/A')}</p>"
+        
+        # Check if TRF is linked
+        trf_mapping = getattr(self, 'patient_trf_mapping', {})
+        if patient_key in trf_mapping:
+            trf_info = trf_mapping[patient_key]
+            html += f"<hr><p style='color:#28a745;'><b>✅ TRF Linked:</b> {os.path.basename(trf_info['trf_path'])}</p>"
+            html += f"<p><b>Match Score:</b> {int(trf_info.get('match_score', 0))}%</p>"
+            
+            if trf_info.get('trf_data'):
+                html += "<p><b>Extracted Data:</b></p><ul>"
+                for k, v in trf_info['trf_data'].items():
+                    if v:
+                        html += f"<li>{k}: {v}</li>"
+                html += "</ul>"
+        else:
+            html += "<hr><p style='color:#6c757d;'><i>No TRF linked to this patient</i></p>"
+        
+        self.trf_details_text.setHtml(html)
+    
+    def upload_trf_for_selected_patient(self):
+        """Upload TRF for the selected patient"""
+        selected = self.trf_patient_list.selectedItems()
+        if not selected:
+            QMessageBox.warning(self, "No Selection", "Please select a patient first.")
+            return
+        
+        row = selected[0].row()
+        patient_key = self.trf_patient_list.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            f"Select TRF for {patient_key}",
+            "",
+            "TRF Files (*.pdf *.png *.jpg *.jpeg *.tiff *.bmp)"
+        )
+        
+        if file_path:
+            if not hasattr(self, 'patient_trf_mapping'):
+                self.patient_trf_mapping = {}
+            
+            self.patient_trf_mapping[patient_key] = {
+                'trf_path': file_path,
+                'trf_data': None,
+                'match_score': 100  # Manual upload = 100%
+            }
+            
+            # Update list
+            self.populate_trf_patient_list()
+            
+            # Re-select the row
+            self.trf_patient_list.selectRow(row)
+            
+            self.statusBar().showMessage(f"TRF linked to {patient_key}")
+    
+    def verify_selected_patient_trf(self):
+        """Verify TRF for the selected patient"""
+        selected = self.trf_patient_list.selectedItems()
+        if not selected:
+            QMessageBox.warning(self, "No Selection", "Please select a patient first.")
+            return
+        
+        row = selected[0].row()
+        patient_key = self.trf_patient_list.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        
+        trf_mapping = getattr(self, 'patient_trf_mapping', {})
+        if patient_key not in trf_mapping:
+            QMessageBox.warning(self, "No TRF", "No TRF linked to this patient. Upload one first.")
+            return
+        
+        trf_info = trf_mapping[patient_key]
+        patient_data = self.batch_patients_data[patient_key]
+        p_info = patient_data.get('patient_info', {})
+        
+        # Get patient data for comparison
+        comparison_data = {
+            'patient_name': p_info.get('patient_name', ''),
+            'hospital_clinic': p_info.get('hospital_clinic', ''),
+            'pin': p_info.get('pin', ''),
+            'biopsy_date': p_info.get('biopsy_date', ''),
+            'sample_receipt_date': p_info.get('sample_receipt_date', ''),
+            'referring_clinician': p_info.get('referring_clinician', ''),
+        }
+        
+        use_ai = self.use_ai_checkbox.isChecked() if hasattr(self, 'use_ai_checkbox') else False
+        
+        # Verify
+        results, all_correct, has_suggestions, error = self.verify_with_ai(
+            trf_info['trf_path'], 
+            comparison_data,
+            use_ai=use_ai
+        )
+        
+        if error:
+            QMessageBox.warning(self, "Error", error)
+            return
+        
+        # Show comparison dialog (modified for bulk context)
+        self.show_bulk_trf_comparison_dialog(results, patient_key)
+    
+    def show_bulk_trf_comparison_dialog(self, results, patient_key):
+        """Show TRF comparison dialog for bulk verification"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"TRF Verification - {patient_key}")
+        dialog.setMinimumWidth(700)
+        dialog.setMinimumHeight(450)
+        
+        layout = QVBoxLayout()
+        dialog.setLayout(layout)
+        
+        # Header
+        all_match = all(r['status'] in ['ok', 'skip'] for r in results)
+        if all_match:
+            header = QLabel(f"✅ {patient_key}: All fields verified!")
+            header.setStyleSheet("font-size: 16px; font-weight: bold; color: #28a745; padding: 10px;")
+        else:
+            header = QLabel(f"⚠️ {patient_key}: Review differences below")
+            header.setStyleSheet("font-size: 16px; font-weight: bold; color: #dc3545; padding: 10px;")
+        layout.addWidget(header)
+        
+        # Comparison Table
+        table = QTableWidget()
+        table.setColumnCount(5)
+        table.setHorizontalHeaderLabels(["Field", "Current Value", "TRF Value", "Status", "Action"])
+        table.horizontalHeader().setStretchLastSection(True)
+        table.setRowCount(len(results))
+        
+        for i, r in enumerate(results):
+            table.setItem(i, 0, QTableWidgetItem(r['field']))
+            
+            current_item = QTableWidgetItem(r['entered'])
+            if r['status'] == 'mismatch':
+                current_item.setBackground(QColor('#ffcccc'))
+            table.setItem(i, 1, current_item)
+            
+            trf_item = QTableWidgetItem(r['trf_value'])
+            if r['status'] in ['mismatch', 'suggestion']:
+                trf_item.setBackground(QColor('#ccffcc'))
+            table.setItem(i, 2, trf_item)
+            
+            status_item = QTableWidgetItem(r['message'])
+            if r['status'] == 'ok':
+                status_item.setForeground(QColor('#28a745'))
+            elif r['status'] in ['mismatch', 'warning']:
+                status_item.setForeground(QColor('#dc3545'))
+            elif r['status'] == 'suggestion':
+                status_item.setForeground(QColor('#007bff'))
+            table.setItem(i, 3, status_item)
+            
+            if r['can_apply'] and r['trf_value'] and r['trf_value'] != '(not found)':
+                apply_btn = QPushButton("Apply")
+                apply_btn.setStyleSheet("background-color: #28a745; color: white; padding: 3px 8px;")
+                apply_btn.clicked.connect(lambda checked, res=r, pk=patient_key, tbl=table, idx=i: 
+                                         self.apply_bulk_trf_value(res, pk, tbl, idx))
+                table.setCellWidget(i, 4, apply_btn)
+        
+        layout.addWidget(table)
+        
+        # Buttons
+        btn_layout = QHBoxLayout()
+        
+        suggestions = [r for r in results if r['can_apply']]
+        if suggestions:
+            apply_all_btn = QPushButton(f"✓ Apply All ({len(suggestions)})")
+            apply_all_btn.setStyleSheet("background-color: #007bff; color: white; padding: 8px 16px;")
+            apply_all_btn.clicked.connect(lambda: self.apply_all_bulk_trf_values(results, patient_key, table))
+            btn_layout.addWidget(apply_all_btn)
+        
+        btn_layout.addStretch()
+        
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dialog.accept)
+        btn_layout.addWidget(close_btn)
+        
+        layout.addLayout(btn_layout)
+        
+        dialog.exec()
+    
+    def apply_bulk_trf_value(self, result, patient_key, table, row_idx):
+        """Apply a TRF value in bulk verification context"""
+        if patient_key not in self.batch_patients_data:
+            return
+        
+        field_key = result['field_key']
+        trf_value = result['trf_value']
+        
+        # Update the stored patient data
+        if 'patient_info' not in self.batch_patients_data[patient_key]:
+            self.batch_patients_data[patient_key]['patient_info'] = {}
+        
+        self.batch_patients_data[patient_key]['patient_info'][field_key] = trf_value
+        
+        # Update table display
+        table.item(row_idx, 1).setText(trf_value)
+        table.item(row_idx, 1).setBackground(QColor('#ccffcc'))
+        table.item(row_idx, 3).setText("✓ Applied")
+        table.item(row_idx, 3).setForeground(QColor('#28a745'))
+        table.removeCellWidget(row_idx, 4)
+        
+        self.statusBar().showMessage(f"Applied {result['field']} for {patient_key}")
+    
+    def apply_all_bulk_trf_values(self, results, patient_key, table):
+        """Apply all TRF suggestions in bulk context"""
+        count = 0
+        for i, r in enumerate(results):
+            if r['can_apply'] and r['trf_value'] and r['trf_value'] != '(not found)':
+                self.apply_bulk_trf_value(r, patient_key, table, i)
+                count += 1
+        
+        QMessageBox.information(self, "Applied", f"Applied {count} values for {patient_key}")
+    
+    def upload_bulk_trf_dialog(self):
+        """Upload multiple TRFs from the dialog"""
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Select Multiple TRF Documents",
+            "",
+            "TRF Files (*.pdf *.png *.jpg *.jpeg *.tiff *.bmp)"
+        )
+        
+        if file_paths:
+            if not hasattr(self, 'pending_bulk_trfs'):
+                self.pending_bulk_trfs = []
+            self.pending_bulk_trfs.extend(file_paths)
+            
+            QMessageBox.information(
+                self, 
+                "TRFs Added",
+                f"Added {len(file_paths)} TRF files.\nClick 'Auto-Match All TRFs' to match them with patients."
+            )
+    
+    def auto_match_bulk_trfs(self):
+        """Auto-match all pending TRFs with patients"""
+        if not hasattr(self, 'pending_bulk_trfs') or not self.pending_bulk_trfs:
+            QMessageBox.warning(self, "No TRFs", "No TRF files to match. Upload some first.")
+            return
+        
+        if not hasattr(self, 'batch_patients_data') or not self.batch_patients_data:
+            QMessageBox.warning(self, "No Patients", "No patient data loaded.")
+            return
+        
+        # Get extraction method from settings
+        extraction_method = self.settings.value('trf_extraction_method', 'easyocr')
+        
+        matched = 0
+        unmatched = []
+        
+        for trf_path in self.pending_bulk_trfs:
+            trf_name = os.path.basename(trf_path)
+            
+            # Extract data using selected method
+            trf_data = None
+            trf_text = None
+            
+            if extraction_method == 'ollama' and OLLAMA_AVAILABLE:
+                trf_data, error = self.extract_text_with_ollama(trf_path)
+                if error or not isinstance(trf_data, dict):
+                    trf_text, _ = self.extract_text_enhanced(trf_path, method='easyocr')
+                    trf_data = None
+            else:
+                trf_text, error = self.extract_text_enhanced(trf_path, method=extraction_method)
+            
+            if error and not trf_text and not trf_data:
+                unmatched.append((trf_name, error))
+                continue
+            
+            # Find best match
+            best_match = None
+            best_score = 0
+            
+            for patient_key, patient_data in self.batch_patients_data.items():
+                p_info = patient_data.get('patient_info', {})
+                p_name = p_info.get('patient_name', '')
+                p_pin = p_info.get('pin', '')
+                
+                score = 0
+                
+                if trf_data and isinstance(trf_data, dict):
+                    trf_name_val = trf_data.get('patient_name', '') or ''
+                    trf_pin_val = trf_data.get('pin', '') or ''
+                    
+                    if p_name and trf_name_val:
+                        is_match, ratio = self.fuzzy_match(p_name, trf_name_val, 0.5)
+                        score += ratio * 60
+                    
+                    if p_pin and trf_pin_val and p_pin.lower() in trf_pin_val.lower():
+                        score += 40
+                else:
+                    if trf_text:
+                        if p_name:
+                            found, _ = self.find_in_text(trf_text, p_name)
+                            if found:
+                                score += 60
+                        if p_pin:
+                            found, _ = self.find_in_text(trf_text, p_pin)
+                            if found:
+                                score += 40
+                
+                if score > best_score:
+                    best_score = score
+                    best_match = patient_key
+            
+            if best_match and best_score >= 40:
+                if not hasattr(self, 'patient_trf_mapping'):
+                    self.patient_trf_mapping = {}
+                
+                self.patient_trf_mapping[best_match] = {
+                    'trf_path': trf_path,
+                    'trf_data': trf_data if isinstance(trf_data, dict) else None,
+                    'match_score': best_score
+                }
+                matched += 1
+            else:
+                unmatched.append((trf_name, f"Best score: {int(best_score)}%"))
+        
+        # Clear pending
+        self.pending_bulk_trfs = []
+        
+        # Update list
+        self.populate_trf_patient_list()
+        
+        # Show results
+        msg = f"Matched {matched} TRFs with patients."
+        if unmatched:
+            msg += f"\n\nUnmatched ({len(unmatched)}):\n"
+            msg += "\n".join([f"• {name}: {reason}" for name, reason in unmatched[:5]])
+            if len(unmatched) > 5:
+                msg += f"\n... and {len(unmatched) - 5} more"
+        
+        QMessageBox.information(self, "Auto-Match Complete", msg)
     
     # ==================== End TRF Verification Methods ====================
     
