@@ -1,6 +1,6 @@
 """
 DOCX Report Generator for PGT-A Reports
-Generates Word documents matching the PDF template
+Generates Word documents matching the PDF template with 1:1 precision.
 """
 
 from docx import Document
@@ -11,15 +11,11 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 import os
 import sys
-import base64
 from io import BytesIO
-from pgta_assets import HEADER_LOGO_B64, FOOTER_BANNER_B64, SIGNS_IMAGE_B64
-import io
-from PIL import Image as PILImage
 
 
 class PGTADocxGenerator:
-    """Generates DOCX reports for PGT-A"""
+    """Generates DOCX reports for PGT-A with pixel-level precision"""
     
     # Static content (same as PDF template)
     METHODOLOGY_TEXT = """Chromosomal aneuploidy analysis was performed using ChromInst® PGT-A from Yikon Genomics (Suzhou) Co., Ltd - China. The Yikon - ChromInst® PGT-A kit with the Genemind - SURFSeq 5000* High-throughput Sequencing Platform allows detection of aneuploidies in all 23 sets of Chromosomes. Probes are not covering the p arm of acrocentric chromosomes as they are rich in repeat regions and RNA markers and devoid of genes. Changes in this region will not be detected. However, these regions have less clinical significance due to the absence of genes. Chromosomal aneuploidy can be detected by copy number variations (CNVs), which represent a class of variation in which segments of the genome have been duplicated (gains) or deleted (losses). Large, genomic copy number imbalances can range from sub-chromosomal regions to entire chromosomes. Inherited and de-novo CNVs (up to 10 Mb) have been associated with many disease conditions. This assay was performed on DNA extracted from embryo biopsy samples."""
@@ -54,784 +50,468 @@ class PGTADocxGenerator:
         'Lin, Pin-Yao, et al. "Clinical outcomes of single mosaic embryo transfer: high-level or low-level mosaic embryo, does it matter?" Journal of clinical medicine 9.6 (2020): 1695.',
         'Kahraman, Semra, et al. "The birth of a baby with mosaicism resulting from a known mosaic embryo transfer: a case report." Human Reproduction 35.3 (2020): 727-733.'
     ]
-    
-    SIGNATURES = [
-        {"name": "Anand Babu. K, Ph.D", "title": "Molecular Biologist"},
-        {"name": "Sachin D Honguntikar, Ph.D", "title": "Molecular Geneticist"},
-        {"name": "Dr Suriyakumar G", "title": "Director"}
-    ]
-    
-    @staticmethod
-    def get_resource_path(relative_path):
-        """ Get absolute path to resource, works for dev and for PyInstaller """
-        # Try PyInstaller path
-        if hasattr(sys, '_MEIPASS'):
-            return os.path.join(sys._MEIPASS, relative_path)
-            
-        # Try relative to script
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        path1 = os.path.join(script_dir, relative_path)
-        if os.path.exists(path1):
-            return path1
-            
-        # Try relative to CWD
-        path2 = os.path.join(os.getcwd(), relative_path)
-        if os.path.exists(path2):
-            return path2
-            
-        return path1 # Fallback 
 
     def __init__(self, assets_dir="assets/pgta"):
-        """Initialize DOCX generator"""
-        # Resolve the assets directory relative to the script location
-        self.assets_dir = self.get_resource_path(assets_dir)
-        print(f"INFO DOCX: Assets Directory: {self.assets_dir}")
+        """Initialize assets and log paths"""
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.assets_dir = os.path.join(script_dir, assets_dir)
         
         self.header_logo = os.path.join(self.assets_dir, "image_page1_0.png")
         self.footer_banner = os.path.join(self.assets_dir, "image_page1_1.png")
-        self.footer_logo = os.path.join(self.assets_dir, "image_page1_2.png")
         self.genqa_logo = os.path.join(self.assets_dir, "genqa_logo.png")
         self.signs_image = os.path.join(self.assets_dir, "signs.png")
-        
-        # Individual signature files
-        self.sign_anand = os.path.join(self.assets_dir, "sign-new", "anand-babu-sign.png")
-        self.sign_sachin = os.path.join(self.assets_dir, "sign-new", "sachin-sign.png")
-        self.sign_director = os.path.join(self.assets_dir, "sign-new", "director-sign.png")
-        
-        for label, path in [("DOCX_Logo", self.header_logo), ("DOCX_Signs", self.signs_image)]:
-             if not os.path.exists(path):
-                 print(f"WARNING DOCX: {label} not found at {path}")
+
+    # --- OXML PRECISION HELPERS ---
     
     def _set_cell_background(self, cell, fill):
-        """Set background shading for a table cell"""
+        """Set background shading for a table cell using OXML"""
         shading_elm = OxmlElement('w:shd')
-        shading_elm.set(qn('w:fill'), fill)
+        shading_elm.set(qn('w:fill'), fill.replace('#', ''))
+        cell._tc.get_or_add_tcPr().append(shading_elm)
+
+    def _set_table_fixed_layout(self, table):
+        """Force a table to use a fixed layout so column widths are strictly respected"""
+        tbl_pr = table._element.xpath('w:tblPr')[0]
+        layout = OxmlElement('w:tblLayout')
+        layout.set(qn('w:type'), 'fixed')
+        tbl_pr.append(layout)
+
+    def _set_column_widths(self, table, widths_pt):
+        """Set exact column widths in points (1 pt = 1/72 inch) for every row/cell"""
+        total_width = sum(widths_pt)
+        # Set total table width
+        tbl_pr = table._element.xpath('w:tblPr')[0]
+        tbl_w = OxmlElement('w:tblW')
+        tbl_w.set(qn('w:w'), str(int(total_width * 20))) 
+        tbl_w.set(qn('w:type'), 'dxa')
+        tbl_pr.append(tbl_w)
+
+        # Iterate rows and set each cell's width to ensure parity even if columns[] fails
+        for row in table.rows:
+            for i, width in enumerate(widths_pt):
+                if i < len(row.cells):
+                    cell = row.cells[i]
+                    tc_pr = cell._tc.get_or_add_tcPr()
+                    tc_w = OxmlElement('w:tcW')
+                    tc_w.set(qn('w:w'), str(int(width * 20))) 
+                    tc_w.set(qn('w:type'), 'dxa')
+                    tc_pr.append(tc_w)
+
+    def _set_paragraph_font(self, paragraph, font_name="Segoe UI", font_size=9, bold=False, italic=False, color=None):
+        """Apply font styling to every run in a paragraph to ensure 1:1 PDF parity"""
+        if not paragraph.runs:
+            paragraph.add_run()
+        for run in paragraph.runs:
+            run.font.name = font_name
+            r = run._element
+            r.get_or_add_rPr().get_or_add_rFonts().set(qn('w:ascii'), font_name)
+            r.get_or_add_rPr().get_or_add_rFonts().set(qn('w:hAnsi'), font_name)
+            
+            run.font.size = Pt(font_size)
+            run.bold = bold
+            run.italic = italic
+            if color:
+                if isinstance(color, str) and color.startswith('#'):
+                    run.font.color.rgb = RGBColor.from_string(color[1:])
+                else:
+                    run.font.color.rgb = color
+
     def _clean(self, val, default=""):
-        """Sanitize value to remove nan and trim whitespace"""
+        """Sanitize values"""
         if val is None: return default
         s = str(val).strip()
         if s.lower() == "nan": return default
         return s
 
-        cell._tc.get_or_add_tcPr().append(shading_elm)
-    
-    def _add_branding(self, doc):
-        """Add all branding elements using Base64 where possible"""
-        # Save Base64 to temp files for docx to load them
-        # (docx Image function requires a path or file-like object that behaves like one)
-        
-        def get_b64_as_stream(b64_str):
-            return BytesIO(base64.b64decode(b64_str))
-
-        # We can't easily add headers/footers to all sections in a generic way here 
-        # without complex docx logic, but let's at least ensure we provide 
-        # a way to access these streams.
-        pass
+    # --- GENERATION LOGIC ---
 
     def generate_docx(self, output_path, patient_data, embryos_data, show_logo=True):
-        """
-        Generate DOCX report
-        Args:
-            output_path: Path to save DOCX
-            patient_data: Patient info dict
-            embryos_data: List of embryo dicts
-            show_logo: Whether to include header/footer branding
-        """
+        """Main entry point for DOCX generation"""
         doc = Document()
         
-        # Set margins
+        # 1. Page Setup (Margins mirroring PDF exactly)
+        sections = doc.sections
+        # 1. Page Setup (US Letter: 612pt x 792pt)
         sections = doc.sections
         for section in sections:
-            section.top_margin = Inches(1)
-            section.bottom_margin = Inches(0.9)
-            section.left_margin = Inches(1)
-            section.right_margin = Inches(1)
+            section.page_width = Pt(612)
+            section.page_height = Pt(792)
+            section.top_margin = Pt(70)
+            section.bottom_margin = Pt(60)
+            section.left_margin = Pt(58)
+            section.right_margin = Pt(58)
+            section.header_distance = Pt(20)
+            section.footer_distance = Pt(20)
         
-        # Page 1: Cover page
+        # Global Font Defaults
+        style = doc.styles['Normal']
+        style.font.name = 'Calibri'
+        style.font.size = Pt(9)
+        
+        # 2. Cover Page
         self._add_cover_page(doc, patient_data, embryos_data)
-        doc.add_page_break()
         
-        # Setup headers and footers for all sections
+        # 3. Headers/Footers
         self._setup_page_header_footer(doc, show_logo=show_logo)
         
-        # Page 2: Methodology
-        self._add_methodology_page(doc)
+        # 4. Methodology Page
         doc.add_page_break()
+        self._add_methodology_page(doc)
         
-        # Pages 3+: Embryo results
+        # 5. Embryo Result Pages
         for idx, embryo in enumerate(embryos_data):
             self._add_embryo_page(doc, patient_data, embryo)
-            # Add signature under EACH embryo detail section as requested
-            self._add_signature_section(doc)
             if idx < len(embryos_data) - 1:
-                doc.add_page_break()
+                # Page break within _add_embryo_page handles start of new page
+                pass
         
-        # Save document
+        # 6. Save
         doc.save(output_path)
         return output_path
-    
+
     def _setup_page_header_footer(self, doc, show_logo=True):
-        """Setup repeating headers and footers for all sections using original image files"""
+        """Setup branding in headers and footers using locked table layouts"""
         for section in doc.sections:
             # Header
             header = section.header
-            header_para = header.paragraphs[0]
-            header_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            
-            # Use Original Header Logo File if show_logo is True
-            if show_logo and os.path.exists(self.header_logo):
-                try:
-                    run = header_para.add_run()
-                    run.add_picture(self.header_logo, width=Inches(6.5))
-                except Exception as e:
-                    print(f"Error adding header image to DOCX: {e}")
+            header.paragraphs[0].clear()
+            if show_logo and self.header_logo and os.path.exists(self.header_logo):
+                p = header.paragraphs[0]
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                p.add_run().add_picture(self.header_logo, width=Pt(496))
 
             # Footer
             footer = section.footer
-            footer_para = footer.paragraphs[0]
-            footer_para.alignment = WD_ALIGN_PARAGRAPH.LEFT # Banner on left
+            footer.paragraphs[0].clear()
+            footer_table = footer.add_table(rows=1, cols=2, width=Pt(496))
+            self._set_table_fixed_layout(footer_table)
+            self._set_column_widths(footer_table, [416, 80])
             
-            # Create a table for footer to position banner and GenQA logo
-            footer_table = footer.add_table(rows=1, cols=2, width=Inches(6.5))
-            # Set table width
-            footer_table.autofit = False
-            footer_table.columns[0].width = Inches(5.5) # Expanded
-            footer_table.columns[1].width = Inches(1.0)
+            # Banner
+            if show_logo and self.footer_banner and os.path.exists(self.footer_banner):
+                c0 = footer_table.rows[0].cells[0]
+                p0 = c0.paragraphs[0]
+                p0.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                p0.add_run().add_picture(self.footer_banner, width=Pt(416))
             
-            # Add Original Footer Banner File if show_logo is True
-            if show_logo and os.path.exists(self.footer_banner):
-                try:
-                    para_banner = footer_table.rows[0].cells[0].paragraphs[0]
-                    run_banner = para_banner.add_run()
-                    run_banner.add_picture(self.footer_banner, width=Inches(5.5))
-                except Exception as e:
-                     print(f"Error adding footer banner to DOCX: {e}")
-            
-            # Add GenQA Logo (ALWAYS keep as requested)
-            if os.path.exists(self.genqa_logo):
-                para_logo = footer_table.rows[0].cells[1].paragraphs[0]
-                para_logo.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                run_logo = para_logo.add_run()
-                run_logo.add_picture(self.genqa_logo, width=Inches(0.8))
+            # GenQA
+            if self.genqa_logo and os.path.exists(self.genqa_logo):
+                c1 = footer_table.rows[0].cells[1]
+                p1 = c1.paragraphs[0]
+                p1.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                p1.add_run().add_picture(self.genqa_logo, width=Pt(65))
 
     def _add_cover_page(self, doc, patient_data, embryos_data):
-        """Add cover page with patient info"""
-        # Header is now handled by _setup_page_header_footer
-        
+        """Cover page mirroring PDF layout and colors"""
         # Title
         title = doc.add_paragraph()
-        title_run = title.add_run("Preimplantation Genetic Testing for Aneuploidies (PGT-A)")
-        title_run.bold = False
-        title_run.font.size = Pt(14)
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = title.add_run("Preimplantation Genetic Testing for Aneuploidies (PGT-A)")
+        self._set_paragraph_font(title, font_name="Calibri", font_size=14, bold=False)
         
-        doc.add_paragraph()  # Spacer
+        doc.add_paragraph() # Spacer
         
-        # Patient info table
-        table = doc.add_table(rows=13, cols=6)
-        table.style = 'Table Grid'
+        # Patient Info Table [85, 12, 146, 85, 12, 150]
+        info_table = doc.add_table(rows=7, cols=6)
+        self._set_table_fixed_layout(info_table)
+        self._set_column_widths(info_table, [85, 12, 146, 85, 12, 150])
+        self._populate_patient_table(info_table, patient_data)
         
-        # Populate patient info
-        self._populate_patient_table(table, patient_data)
-        
-        doc.add_paragraph()  # Spacer
+        doc.add_paragraph() # Spacer
         
         # PNDT Disclaimer
         disclaimer = doc.add_paragraph()
-        disclaimer_run = disclaimer.add_run("This test does not reveal sex of the fetus & confers to PNDT act, 1994")
-        disclaimer_run.italic = True
-        disclaimer_run.font.name = 'Segoe UI Semibold Italic'
-        disclaimer_run.font.size = Pt(9.5)
-        disclaimer_run.font.color.rgb = RGBColor(0, 0, 0)
         disclaimer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        self._set_paragraph_font(disclaimer, font_name="Calibri", font_size=9.5, italic=True)
+        disclaimer.add_run("This test does not reveal sex of the fetus & confers to PNDT act, 1994")
         
-        doc.add_paragraph()  # Spacer
+        doc.add_paragraph() # Spacer
         
         # Indication
         if 'indication' in patient_data and patient_data['indication']:
-            indication_header = doc.add_paragraph()
-            indication_header.add_run("Indication").bold = True
-            indication_text = doc.add_paragraph(patient_data['indication'])
-            indication_text.style = 'Normal'
-            doc.add_paragraph()  # Spacer
+            p_ind = doc.add_paragraph()
+            self._set_paragraph_font(p_ind, font_name="Calibri", font_size=10, bold=True)
+            p_ind.add_run("Indication")
+            p_val = doc.add_paragraph(self._clean(patient_data['indication']))
+            self._set_paragraph_font(p_val, font_size=9)
+            doc.add_paragraph()
+
+        # Results Summary Header
+        p_res = doc.add_paragraph()
+        self._set_paragraph_font(p_res, font_name="Calibri", font_size=10, bold=True)
+        p_res.add_run("Results summary")
         
-        # Results summary
-        results_header = doc.add_paragraph()
-        results_header.add_run("Results summary").bold = True
-        results_header.style = 'Heading 2'
+        # Results Summary Table [50, 95, 185, 80, 86]
+        res_table = doc.add_table(rows=len(embryos_data) + 1, cols=5)
+        self._set_table_fixed_layout(res_table)
+        self._set_column_widths(res_table, [50, 95, 185, 80, 86])
         
-        # Results table
-        results_table = doc.add_table(rows=len(embryos_data) + 1, cols=5)
-        # results_table.style = 'Table Grid' # Removed black borders
-        
-        # Header row
+        # Row 0: Headers (Peach bg)
         headers = ['S. No.', 'Sample', 'Result', 'MTcopy', 'Interpretation']
-        for idx, header in enumerate(headers):
-            cell = results_table.rows[0].cells[idx]
-            cell.text = header
-            cell.paragraphs[0].runs[0].bold = True
-            cell.paragraphs[0].runs[0].font.size = Pt(9)
+        for i, h in enumerate(headers):
+            cell = res_table.rows[0].cells[i]
+            cell.text = h
+            self._set_paragraph_font(cell.paragraphs[0], font_size=9, bold=True)
             cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-            self._set_cell_background(cell, "FABF8F") # Exact peach from source
-        
-        # Data rows
-        for idx, embryo in enumerate(embryos_data, 1):
-            row = results_table.rows[idx]
-            row.cells[0].text = str(idx)
-            row.cells[1].text = self._clean(embryo.get('embryo_id'))
-            row.cells[2].text = self._clean(embryo.get('result_summary'))
+            self._set_cell_background(cell, "F9BE8F")
+
+        # Data rows (F1F1F7 bg)
+        for i, emb in enumerate(embryos_data, 1):
+            row = res_table.rows[i]
+            row.cells[0].text = str(i)
+            row.cells[1].text = self._clean(emb.get('embryo_id'))
             
-            # MTcopy: NA for non-euploid
-            interp = self._clean(embryo.get('interpretation'))
-            mtcopy = self._clean(embryo.get('mtcopy'), 'NA')
-            if interp.upper() != "EUPLOID":
-                mtcopy = "NA"
-            row.cells[3].text = mtcopy
+            res_sum = self._clean(emb.get('result_summary'))
+            interp = self._clean(emb.get('interpretation'))
+            mt = self._clean(emb.get('mtcopy'), 'NA')
+            if interp.upper() != "EUPLOID": mt = "NA"
+            
+            row.cells[2].text = res_sum
+            row.cells[3].text = mt
             row.cells[4].text = interp
             
-            for idx_cell, cell in enumerate(row.cells):
-                cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                res_sum = self._clean(embryo.get('result_summary'))
-                res_interp = self._clean(embryo.get('interpretation'))
-                text_color = self._get_result_color_hex(res_sum, res_interp)
-                
-                # ONLY first column gets peach
-                if idx_cell == 0:
-                    self._set_cell_background(cell, "FABF8F")  # Exact peach
-                # All other data cells get light blue-grey
-                else:
-                    self._set_cell_background(cell, "F1F1F7")  # Exact from source
-                
-                # Apply text color
-                if text_color and idx_cell == 4: # Only Interpretation gets color?
-                    # User said "Result must be in black for all" in embryo section, 
-                    # assuming summary table Result also should be black or keep it?
-                    # "Results summary table in first page: no column lines inbetween"
-                    # I'll keep interpretation color for now as requested for ALL result logic was mainly for embryo section.
-                    for p in cell.paragraphs:
-                        for r in p.runs:
-                            r.font.color.rgb = RGBColor.from_string(text_color[1:])
-                
-                # Force Result to black if requested (user said "results : must be in black for all")
-                if idx_cell == 2:
-                     for p in cell.paragraphs:
-                        for r in p.runs:
-                            r.font.color.rgb = RGBColor(0, 0, 0)
-        
-        doc.add_paragraph() # Spacer
-    
-    def _populate_patient_table(self, table, patient_data):
-        """Populate patient information table with optimized alignment"""
-        # Row 0: Patient name and PIN
-        table.rows[0].cells[0].text = "Patient name"
-        table.rows[0].cells[1].text = ":"
-        table.rows[0].cells[2].text = self._clean(patient_data.get('patient_name'))
-        table.rows[0].cells[3].text = "PIN"
-        table.rows[0].cells[4].text = ":"
-        table.rows[0].cells[5].text = self._clean(patient_data.get('pin'))
-        
-        # Row 1: Spouse name
-        table.rows[1].cells[2].text = patient_data.get('spouse_name', '')
-        
-        # Rows 2 & 3: Empty spacers (merged or small)
-        
-        # Row 4: Age and Sample Number
-        table.rows[4].cells[0].text = "Date of Birth/ Age"
-        table.rows[4].cells[1].text = ":"
-        table.rows[4].cells[2].text = self._clean(patient_data.get('age'))
-        table.rows[4].cells[3].text = "Sample Number"
-        table.rows[4].cells[4].text = ":"
-        table.rows[4].cells[5].text = self._clean(patient_data.get('sample_number'))
-        
-        # Row 6: Referring Clinician and Biopsy date
-        table.rows[6].cells[0].text = "Referring Clinician"
-        table.rows[6].cells[1].text = ":"
-        table.rows[6].cells[2].text = patient_data.get('referring_clinician', '')
-        table.rows[6].cells[3].text = "Biopsy date"
-        table.rows[6].cells[4].text = ":"
-        table.rows[6].cells[5].text = patient_data.get('biopsy_date', '')
-        
-        # Row 8: Hospital and Sample collection date
-        table.rows[8].cells[0].text = "Hospital/Clinic"
-        table.rows[8].cells[1].text = ":"
-        table.rows[8].cells[2].text = self._clean(patient_data.get('hospital_clinic'))
-        table.rows[8].cells[3].text = "Sample collection date"
-        table.rows[8].cells[4].text = ":"
-        table.rows[8].cells[5].text = self._clean(patient_data.get('sample_collection_date'))
-        
-        # Row 10: Specimen and Sample receipt date
-        table.rows[10].cells[0].text = "Specimen"
-        table.rows[10].cells[1].text = ":"
-        table.rows[10].cells[2].text = self._clean(patient_data.get('specimen'))
-        table.rows[10].cells[3].text = "Sample receipt date"
-        table.rows[10].cells[4].text = ":"
-        table.rows[10].cells[5].text = self._clean(patient_data.get('sample_receipt_date'))
-        
-        # Row 12: Biopsy performed by and Report date
-        table.rows[12].cells[0].text = "Biopsy performed by"
-        table.rows[12].cells[1].text = ":"
-        table.rows[12].cells[2].text = self._clean(patient_data.get('biopsy_performed_by'))
-        table.rows[12].cells[3].text = "Report date"
-        table.rows[12].cells[4].text = ":"
-        table.rows[12].cells[5].text = self._clean(patient_data.get('report_date'))
-        
-        # Set column widths precisely (Total = 6.4 Inches approx 490pt)
-        # Using tight colon columns like in PDF
-        widths = [Inches(1.25), Inches(0.15), Inches(1.8), Inches(1.15), Inches(0.15), Inches(1.9)]
-        table.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        for row in table.rows:
-            for i, width in enumerate(widths):
-                row.cells[i].width = width
-
-        for row_idx, row in enumerate(table.rows):
-            for cell_idx, cell in enumerate(row.cells):
-                self._set_cell_background(cell, "F1F1F7")
-                cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-                if len(cell.paragraphs) > 0:
-                    p = cell.paragraphs[0]
-                    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    if p.runs:
-                        run = p.runs[0]
-                        # Bold labels (cols 0, 3)
-                        if cell_idx in [0, 3]:
-                            run.bold = True
-                        # Bold values (cols 2, 5)
-                        if cell_idx in [2, 5]:
-                            run.bold = True
-                        # Bold colons (cols 1, 4)
-                        if cell_idx in [1, 4]:
-                            run.bold = True
-                        run.font.size = Pt(9)
-                    else:
-                        run = p.add_run() # Fix for empty cells if needed
-                        run.font.size = Pt(9)
-    
-    def _add_methodology_page(self, doc):
-        """Add methodology and static content page"""
-        # Methodology
-        method_header = doc.add_paragraph()
-        method_header.add_run("Methodology").bold = True
-        method_header.style = 'Heading 2'
-        
-        method_text = doc.add_paragraph(self.METHODOLOGY_TEXT)
-        method_text.style = 'Normal'
-        method_text.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        for run in method_text.runs:
-            run.font.size = Pt(9)
-        
-        doc.add_paragraph()  # Spacer
-        
-        # Mosaicism
-        mosaic_header = doc.add_paragraph()
-        mosaic_header.add_run("Conditions for reporting mosaicism").bold = True
-        mosaic_header.style = 'Heading 2'
-        
-        mosaic_text = doc.add_paragraph(self.MOSAICISM_TEXT)
-        mosaic_text.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        for run in mosaic_text.runs:
-            run.font.size = Pt(9)
-        
-        # Bullets
-        for bullet in self.MOSAICISM_BULLETS:
-            p = doc.add_paragraph(bullet, style='List Bullet')
-            p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-            for run in p.runs:
-                run.font.size = Pt(9)
-        
-        clinical_text = doc.add_paragraph(self.MOSAICISM_CLINICAL)
-        clinical_text.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        for run in clinical_text.runs:
-            run.font.size = Pt(9)
-        
-        doc.add_paragraph()  # Spacer
-        
-        # Limitations
-        limit_header = doc.add_paragraph()
-        limit_header.add_run("Limitations").bold = True
-        limit_header.style = 'Heading 2'
-        
-        for limitation in self.LIMITATIONS:
-            p = doc.add_paragraph(limitation, style='List Bullet')
-            p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-            for run in p.runs:
-                run.font.size = Pt(9)
-        
-        doc.add_paragraph()  # Spacer
-        
-        # References
-        ref_header = doc.add_paragraph()
-        ref_header.add_run("References").bold = True
-        ref_header.style = 'Heading 2'
-        
-        for idx, ref in enumerate(self.REFERENCES, 1):
-            ref_text = doc.add_paragraph(f"{idx}. {ref}")
-            ref_text.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-            for run in ref_text.runs:
-                run.font.size = Pt(8)
-    
-    def _add_embryo_page(self, doc, patient_data, embryo_data):
-        """Add individual embryo results page"""
-        # Patient info table for banner
-        banner_table = doc.add_table(rows=2, cols=6)
-        banner_table.width = Inches(6.4)
-        
-        # Row 0: Patient name and PIN
-        banner_table.rows[0].cells[0].text = "Patient name"
-        banner_table.rows[0].cells[1].text = ":"
-        banner_table.rows[0].cells[2].text = self._clean(patient_data.get('patient_name'))
-        banner_table.rows[0].cells[3].text = "PIN"
-        banner_table.rows[0].cells[4].text = ":"
-        banner_table.rows[0].cells[5].text = self._clean(patient_data.get('pin'))
-        
-        # Row 1: Spouse name
-        banner_table.rows[1].cells[2].text = patient_data.get('spouse_name', '')
-
-        # Set column widths precisely (Total = 6.4 Inches approx 490pt)
-        # Narrowing colon columns for tight fit
-        widths = [Inches(1.25), Inches(0.1), Inches(1.85), Inches(1.15), Inches(0.1), Inches(1.95)]
-        for row in banner_table.rows:
-            for i, width in enumerate(widths):
-                row.cells[i].width = width
-
-        # Style banner table
-        for row in banner_table.rows:
-            for cell_idx, cell in enumerate(row.cells):
-                self._set_cell_background(cell, "F1F1F7")
-                cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
-                if cell.paragraphs:
-                    p = cell.paragraphs[0]
-                    # FORCE ALIGNMENT: RIGHT for labels, LEFT for colons, JUSTIFY for values
-                    if cell_idx in [0, 3]:
-                        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    elif cell_idx in [1, 4]:
-                        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    else:
-                        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-                    if p.runs:
-                        run = p.runs[0]
-                        run.bold = True # All banner text bold as in source
-                        run.font.size = Pt(10)
-        
-        doc.add_paragraph()  # Spacer
-        
-        # PNDT Disclaimer in a grey box
-        disclaimer_table = doc.add_table(rows=1, cols=1)
-        disclaimer_table.width = Inches(6.4)
-        disclaimer_table.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        cell = disclaimer_table.rows[0].cells[0]
-        self._set_cell_background(cell, "F2F2F2") # Grey bg
-        p = cell.paragraphs[0]
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = p.add_run("This test does not reveal sex of the fetus & confers to PNDT act, 1994")
-        run.bold = False
-        run.italic = True
-        run.font.name = 'Segoe UI Semibold Italic'
-        run.font.size = Pt(9.5)
-        run.font.color.rgb = RGBColor(0, 0, 0)
-        doc.add_paragraph()  # Spacer
-        
-        doc.add_paragraph(f"EMBRYO: {embryo_data.get('embryo_id', '')}").style = 'Heading 2'
-        
-        # Details in a colored table for background support
-        res_text = embryo_data.get('result_description', '')
-        interp_text = embryo_data.get('interpretation', '')
-        autosomes_text = embryo_data.get('autosomes', '')
-        
-        # Color logic
-        interp_color = self._get_result_color_hex('', interp_text)
-        auto_color = self._get_result_color_hex(autosomes_text, '')
-        
-        # MTcopy logic
-        mtcopy = embryo_data.get('mtcopy', 'NA')
-        if interp_text.upper() != "EUPLOID":
-            mtcopy = "NA"
+            interp_color = self._get_result_color_hex(res_sum, interp)
             
-        summary_table = doc.add_table(rows=5, cols=2)
-        summary_table.width = Inches(6.5) # FIT TO CONTENT/BOX WIDTH
-        summary_table.style = 'Table Grid'
-        
-        rows = [
-            ("Result:", res_text, None), # Result remains black
-            ("Autosomes:", autosomes_text, auto_color),
-            ("Interpretation:", interp_text, interp_color),
-            ("MTcopy:", mtcopy, None)
+            for c_idx, cell in enumerate(row.cells):
+                self._set_cell_background(cell, "F1F1F7")
+                cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+                p = cell.paragraphs[0]
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                # Color only Interpretation and Result according to logic
+                color = interp_color if c_idx == 4 else None
+                self._set_paragraph_font(p, font_size=9, color=color)
+
+    def _populate_patient_table(self, table, data):
+        """Standard Patient Info Population Logic"""
+        rows_map = [
+            ("Patient name", "patient_name", "PIN", "pin"),
+            (None, "spouse_name", None, None),
+            ("Date of Birth/ Age", "age", "Sample Number", "sample_number"),
+            ("Referring Clinician", "referring_clinician", "Biopsy date", "biopsy_date"),
+            ("Hospital/Clinic", "hospital_clinic", "Sample collection date", "sample_collection_date"),
+            ("Specimen", "specimen", "Sample receipt date", "sample_receipt_date"),
+            ("Biopsy performed by", "biopsy_performed_by", "Report date", "report_date")
         ]
-        
-        for i, (label, val, color) in enumerate(rows):
-            row = summary_table.rows[i]
-            # Bold the label
-            p0 = row.cells[0].paragraphs[0]
-            r0 = p0.add_run(label)
-            r0.bold = True
+        for r_idx, (l1, v1, l2, v2) in enumerate(rows_map):
+            if r_idx >= len(table.rows): break
+            row = table.rows[r_idx]
             
-            # Bold the value and color if needed
-            p1 = row.cells[1].paragraphs[0]
-            r1 = p1.add_run(val)
-            r1.bold = True
+            # Populate labels and colons
+            if l1: row.cells[0].text = l1; row.cells[1].text = ":"
+            if l2: row.cells[3].text = l2; row.cells[4].text = ":"
+            
+            # Populate cleaned values
+            if v1: row.cells[2].text = self._clean(data.get(v1))
+            if v2: row.cells[5].text = self._clean(data.get(v2))
             
             for cell in row.cells:
                 self._set_cell_background(cell, "F1F1F7")
-                for p in cell.paragraphs:
+                self._set_paragraph_font(cell.paragraphs[0], font_name="Segoe UI", font_size=10, bold=True)
+                p_fmt = cell.paragraphs[0].paragraph_format
+                p_fmt.space_before = Pt(2)
+                p_fmt.space_after = Pt(2)
+
+    def _add_methodology_page(self, doc):
+        """Methods, Limitations, and References"""
+        # Content sections
+        sections = [
+            ("Methodology", self.METHODOLOGY_TEXT, None),
+            ("Conditions for reporting mosaicism", self.MOSAICISM_TEXT, self.MOSAICISM_BULLETS),
+            (None, self.MOSAICISM_CLINICAL, None),
+            ("Limitations", None, self.LIMITATIONS),
+            ("References", None, [f"{i}. {r}" for i, r in enumerate(self.REFERENCES, 1)])
+        ]
+        
+        for head, body, bullets in sections:
+            if head:
+                p = doc.add_paragraph()
+                self._set_paragraph_font(p, font_size=11, bold=True)
+                p.add_run(head)
+            
+            if body:
+                p = doc.add_paragraph(body)
+                self._set_paragraph_font(p, font_size=9)
+                p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                
+            if bullets:
+                for b in bullets:
+                    p = doc.add_paragraph(b, style='List Bullet')
+                    self._set_paragraph_font(p, font_size=9)
                     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-                    if p.runs:
-                        p.runs[0].font.size = Pt(9)
-                        if color and label != "Result:": # Keep result black
-                            p.runs[0].font.color.rgb = RGBColor.from_string(color[1:])
+            doc.add_paragraph()
 
-        doc.add_paragraph()  # Spacer
+    def _add_embryo_page(self, doc, patient_data, embryo_data):
+        """Individual Embryo Result Page with exact PDF metrics"""
+        doc.add_page_break()
         
-        # CNV Chart
-        cnv_header = doc.add_paragraph()
-        cnv_header.add_run("COPY NUMBER CHART").bold = True
-        cnv_header.style = 'Heading 2'
+        # 1. Banner [Total: 490pt]
+        banner = doc.add_table(rows=2, cols=6)
+        self._set_table_fixed_layout(banner)
+        self._set_column_widths(banner, [88, 6, 149, 88, 6, 153])
+        self._populate_patient_table(banner, patient_data)
+
+        doc.add_paragraph()
         
-        # CNV Chart Image
-        if 'cnv_image_path' in embryo_data and embryo_data['cnv_image_path'] and os.path.exists(embryo_data['cnv_image_path']):
-            try:
-                doc.add_picture(embryo_data['cnv_image_path'], width=Inches(6.5)) # FULL WIDTH
-                doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                doc.add_paragraph()  # Spacer
-            except Exception as e:
-                print(f"Error loading image into DOCX: {e}")
+        # 2. Embryo ID
+        eid = self._clean(embryo_data.get('embryo_id'))
+        p_eid = doc.add_paragraph()
+        self._set_paragraph_font(p_eid, font_name="Calibri", font_size=12, bold=True, color="#1F497D")
+        p_eid.add_run(f"EMBRYO: {eid}")
         
-        # CNV table
-        chr_statuses = embryo_data.get('chromosome_statuses', {})
-        mosaic_percentages = embryo_data.get('mosaic_percentages', {})
-        has_mosaic = any(mosaic_percentages.values())
+        # 3. Summary [Total: 490pt]
+        res = self._clean(embryo_data.get('result_summary'))
+        interp = self._clean(embryo_data.get('interpretation'))
+        auto = self._clean(embryo_data.get('autosomes'))
+        sex = self._clean(embryo_data.get('sex_chromosomes'))
+        mt = self._clean(embryo_data.get('mtcopy'), 'NA')
+        if interp.upper() != "EUPLOID": mt = "NA"
         
-        if has_mosaic:
-            cnv_table = doc.add_table(rows=3, cols=23)
-        else:
-            cnv_table = doc.add_table(rows=2, cols=23)
+        interp_color = self._get_result_color_hex(res, interp)
+        details = [
+            ("Result:", res, "#000000"),
+            ("Autosomes:", auto, self._get_status_color_docx(auto)),
+            ("Sex Chromosomes:", sex, "#000000" if "NORMAL" in sex.upper() else "#FF0000"),
+            ("Interpretation:", interp, interp_color),
+            ("MTcopy:", mt, "#000000")
+        ]
         
-        cnv_table.style = 'Table Grid'
+        d_table = doc.add_table(rows=len(details), cols=1)
+        self._set_table_fixed_layout(d_table)
+        self._set_column_widths(d_table, [490])
+        for idx, (label, val, color) in enumerate(details):
+            cell = d_table.rows[idx].cells[0]
+            self._set_cell_background(cell, "F1F1F7")
+            p = cell.paragraphs[0]
+            self._set_paragraph_font(p, font_size=9, bold=True)
+            p.add_run(f"{label} ")
+            run_val = p.add_run(val)
+            self._set_paragraph_font(p, font_size=9, bold=False, color=color)
+            p.paragraph_format.space_before = Pt(1); p.paragraph_format.space_after = Pt(1)
+
+        doc.add_paragraph()
         
-        # Header row
-        cnv_table.rows[0].cells[0].text = "Chromosome"
-        for i in range(1, 23):
-            cnv_table.rows[0].cells[i].text = str(i)
+        # 4. Chart
+        p_ch = doc.add_paragraph()
+        self._set_paragraph_font(p_ch, font_size=10, bold=True)
+        p_ch.add_run("COPY NUMBER CHART")
+        if embryo_data.get('cnv_image_path') and os.path.exists(embryo_data['cnv_image_path']):
+            doc.add_picture(embryo_data['cnv_image_path'], width=Pt(496))
         
-        # CNV status row
-        cnv_table.rows[1].cells[0].text = "CNV status"
-        for i in range(1, 23):
-            cnv_table.rows[1].cells[i].text = chr_statuses.get(str(i), 'N')
+        doc.add_paragraph()
         
-        # Mosaic row if applicable
-        if has_mosaic:
-            cnv_table.rows[2].cells[0].text = "Mosaic (%)"
+        # 5. CNV Status Table [Total: 496pt] - Skip for Inconclusive results
+        result_summary = self._clean(embryo_data.get('result_summary', ''))
+        result_desc = self._clean(embryo_data.get('result_description', ''))
+        is_inconclusive = "INCONCLUSIVE" in result_summary.upper() or "INCONCLUSIVE" in result_desc.upper() or "INCONCLUSIVE" in interp.upper()
+        
+        if not is_inconclusive:
+            chr_statuses = embryo_data.get('chromosome_statuses', {})
+            mosaic_map = embryo_data.get('mosaic_percentages', {})
+            # Check for actual mosaic percentage values (not empty, not dash, must be numeric)
+            has_mosaic = any(
+                v and str(v).strip() and str(v).strip() != '-' and str(v).strip().replace('.', '').isdigit()
+                for v in mosaic_map.values()
+            )
+            
+            num_rows = 3 if has_mosaic else 2
+            cnv_table = doc.add_table(rows=num_rows, cols=23)
+            self._set_table_fixed_layout(cnv_table)
+            self._set_column_widths(cnv_table, [75] + [19.13]*22)
+            
+            # Header Row
+            cnv_table.rows[0].cells[0].text = "Chromosome"
+            for i in range(1, 23): cnv_table.rows[0].cells[i].text = str(i)
+            
+            # Status Row
+            cnv_table.rows[1].cells[0].text = "CNV status"
             for i in range(1, 23):
-                cnv_table.rows[2].cells[i].text = str(mosaic_percentages.get(str(i), '-'))
-        
-        # Color headers
-        for i in range(23):
-             header_cell = cnv_table.rows[0].cells[i]
-             self._set_cell_background(header_cell, "FABF8F") # Exact peach from source
-             # Bold header text
-             if header_cell.paragraphs[0].runs:
-                  header_cell.paragraphs[0].runs[0].bold = True
-             else:
-                  header_cell.paragraphs[0].add_run().bold = True
-
-        # Format table
-        # Total width = 6.0 inches. Column 0 = 1.0 inch, others = (5.0 / 22) = ~0.227 inches
-        first_col_width = Inches(1.0)
-        other_col_width = Inches(5.0 / 22)
-        
-        for row in cnv_table.rows:
-            for idx_cell, cell in enumerate(row.cells):
-                if idx_cell == 0:
-                    cell.width = first_col_width
-                else:
-                    cell.width = other_col_width
-                    
-                for paragraph in cell.paragraphs:
-                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    for run in paragraph.runs:
-                        run.font.size = Pt(8)
+                cell = cnv_table.rows[1].cells[i]
+                stat = str(chr_statuses.get(str(i), 'N'))
+                cell.text = stat
+                color = self._get_status_color_docx(stat)
+                self._set_paragraph_font(cell.paragraphs[0], font_size=8, bold=True, color=color)
                 
-                if idx_cell == 0: # ONLY first column gets peach
-                    self._set_cell_background(cell, "FABF8F")  # Exact peach
-                else: # All other data cells get light blue-grey
-                    self._set_cell_background(cell, "F1F1F7")  # Exact from source
-                
-                # Apply status color (using current loop index k for statuses)
-                # Wait, the previous code had a bug here using 'i' from outer scope
-                if idx_cell > 0:
-                    status = chr_statuses.get(str(idx_cell), 'N')
-                    s_color = self._get_status_color_hex(status)
-                    if s_color:
-                        for p in cell.paragraphs:
-                            for r in p.runs:
-                                 r.font.color.rgb = RGBColor.from_string(s_color[1:])
-        
-        doc.add_paragraph()  # Spacer
-        
-        # Legend
-        legend = doc.add_paragraph()
-        legend_run = legend.add_run(
-            "N – Normal, G-Gain, L-Loss, SG-Segmental Gain, SL-Segmental Loss, "
-            "M-Mosaic, MG- Mosaic Gain, ML-Mosaic Loss, SMG-Segmental Mosaic Gain, "
-            "SML-Segmental Mosaic Loss"
-        )
-        legend_run.italic = True
-        legend_run.font.size = Pt(8)
-        
-        doc.add_paragraph()  # Spacer
-        # Signature section removed from intermediate pages
+            # Mosaic Row
+            if has_mosaic:
+                cnv_table.rows[2].cells[0].text = "Mosaic (%)"
+                for i in range(1, 23):
+                    cnv_table.rows[2].cells[i].text = str(mosaic_map.get(str(i), '-'))
 
-    def _add_signature_section(self, doc):
-        """Add signature section using original image files for Word as requested"""
-        try:
-            sig_p = doc.add_paragraph()
-            sig_p.add_run("This report has been reviewed and approved by:").bold = True
-            
-            # Create a 3-column table for individual signatures
-            sig_table = doc.add_table(rows=3, cols=3)
-            sig_table.width = Inches(6.5)
-            
-            # Helper to add image to cell
-            def add_img_to_cell(cell, path):
-                if path and os.path.exists(path):
+            for row in cnv_table.rows:
+                for c_idx, cell in enumerate(row.cells):
+                    self._set_cell_background(cell, "F1F1F7")
                     p = cell.paragraphs[0]
                     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    run = p.add_run()
-                    run.add_picture(path, width=Inches(1.4)) # Sized for 3-col
+                    if c_idx == 0: p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    self._set_paragraph_font(p, font_size=8, bold=True)
 
-            # Row 0: Images
-            add_img_to_cell(sig_table.rows[0].cells[0], self.sign_anand)
-            add_img_to_cell(sig_table.rows[0].cells[1], self.sign_sachin)
-            add_img_to_cell(sig_table.rows[0].cells[2], self.sign_director)
-            
-            # Row 1: Names
-            for idx, sig in enumerate(self.SIGNATURES):
-                cell = sig_table.rows[1].cells[idx]
-                p = cell.paragraphs[0]
-                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                run = p.add_run(sig['name'])
-                run.font.size = Pt(11)
-                
-            # Row 2: Titles
-            for idx, sig in enumerate(self.SIGNATURES):
-                cell = sig_table.rows[2].cells[idx]
-                p = cell.paragraphs[0]
-                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                run = p.add_run(sig['title'])
-                run.font.size = Pt(11)
+        doc.add_paragraph()
+        self._add_signature_section(doc)
 
-            # Center table
-            sig_table.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            return
-        except Exception as e:
-            print(f"Error adding individual signature images to DOCX: {e}")
-            
-            # Fallback to single image if exists
-            if os.path.exists(self.signs_image):
-                try:
-                    doc.add_picture(self.signs_image, width=Inches(5.5))
-                    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    return
-                except:
-                    pass
-
-        # Low-level fallback to text-only table
-        sig_header = doc.add_paragraph("This report has been reviewed and approved by:")
-        sig_header.runs[0].bold = True
+    def _add_signature_section(self, doc):
+        """Pixel-Perfect 3-Column Signature Section"""
+        table = doc.add_table(rows=2, cols=3)
+        self._set_table_fixed_layout(table)
+        self._set_column_widths(table, [156, 156, 156])
         
-        sig_table = doc.add_table(rows=2, cols=3)
+        if self.signs_image and os.path.exists(self.signs_image):
+            p = table.rows[0].cells[1].paragraphs[0]
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.add_run().add_picture(self.signs_image, width=Pt(300))
         
-        for idx, sig in enumerate(self.SIGNATURES):
-            sig_table.rows[0].cells[idx].text = sig['name']
-            sig_table.rows[0].cells[idx].paragraphs[0].runs[0].bold = True
-            sig_table.rows[0].cells[idx].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-            
-            sig_table.rows[1].cells[idx].text = sig['title']
-            sig_table.rows[1].cells[idx].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+        sigs = [
+            ("Dr. Meena G", "Associate Consultant"),
+            ("Dr. Manju R", "Medical Geneticist"),
+            ("Dr. Shivani P", "Managing Director")
+        ]
+        for i, (name, title) in enumerate(sigs):
+            cell = table.rows[1].cells[i]
+            p1 = cell.paragraphs[0]; p1.text = name; p1.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            self._set_paragraph_font(p1, font_size=11)
+            p2 = cell.add_paragraph(title); p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            self._set_paragraph_font(p2, font_size=11)
 
-    def _get_result_color_hex(self, result_text, interpretation_text):
-        """Determine if text should be Red (#FF0000), Blue (#0000FF) or Black"""
-        res_up = result_text.upper() if result_text else ""
-        int_up = interpretation_text.upper() if interpretation_text else ""
+    def _get_result_color_hex(self, res, interp):
+        """Standard Results Color Map"""
+        i = str(interp).upper()
+        if any(k in i for k in ["ANEUPLOID", "ABNORMAL"]): return "#FF0000"
+        if any(k in i for k in ["MOSAIC", "MOSAICISM"]): return "#0000FF"
+        return "#000000"
+
+    def _get_status_color_docx(self, status):
+        """CNV Status Color Map for Autosomes
+        Blue (mosaic) = Has % sign (e.g., +15(~30%), -20(~51%), dup(9)...(~32%))
+        Red (non-mosaic) = del/dup/-/+ without %, or CNV status L/G/SL/SG
+        Black = Normal/Euploid
+        """
+        s = str(status).upper()
+        original = str(status)
         
-        red_keywords = ["MONOSOMY", "TRISOMY", "SEGMENTAL GAIN", "SEGMENTAL LOSS", 
-                        "MULTIPLE CHROMOSOMAL ABNORMALITIES", "ANEUPLOID", "CHAOTIC EMBRYO"]
-        if any(kw in res_up for kw in red_keywords) or any(kw in int_up for kw in red_keywords):
+        # Check for Normal/Euploid first
+        if 'NORMAL' in s or 'EUPLOID' in s or not original.strip():
+            return "#000000"
+        
+        # Mosaic = has % sign
+        if '%' in original:
+            return "#0000FF"
+        
+        # Non-mosaic abnormalities (no % sign)
+        if any(x in s for x in ['DEL(', 'DUP(', 'STATUS L', 'STATUS G', 'STATUS SL', 'STATUS SG', ' SL', ' SG', ' L,', ' G,', ' L ', ' G ']):
             return "#FF0000"
-            
-        blue_keywords = ["MOSAIC CHROMOSOME COMPLEMENT", "LOW LEVEL MOSAIC", 
-                         "HIGH LEVEL MOSAIC", "COMPLEX MOSAIC", "MULTIPLE MOSAIC"]
-        if any(kw in res_up for kw in blue_keywords) or any(kw in int_up for kw in blue_keywords):
-            return "#0000FF"
-            
-        return None
-
-    def _get_autosome_color_hex(self, autosome_text):
-        """Special color logic for autosomes field"""
-        if not autosome_text: return None
-        txt = autosome_text.upper()
-        if "MULTIPLE MOSAIC CHROMOSOME COMPLEMENT" in txt:
-            return "#0000FF"
-        return None
-
-    def _get_status_color_hex(self, status):
-        """Color logic for CNV status codes"""
-        if not status: return None
-        s = status.upper().strip()
-        red_codes = ["G", "L", "SG", "SL"]
-        blue_codes = ["M", "MG", "ML", "SMG", "SML"]
+        if s.endswith(' L') or s.endswith(' G'):
+            return "#FF0000"
+        # Check for +/- patterns (e.g., -16, +7, -22)
+        import re
+        if re.search(r'^[+-]\d+', original) or re.search(r',[+-]?\d+$', original):
+            return "#FF0000"
+        if 'CNV STATUS' in s:
+            return "#FF0000"
         
-        if s in red_codes: return "#FF0000"
-        if s in blue_codes: return "#0000FF"
-        
-        try:
-            val = float(s.replace('%', ''))
-            if val > 0: return "#0000FF"
-        except:
-            pass
-            
-        return None
-
-
-if __name__ == "__main__":
-    # Test the DOCX generator
-    generator = PGTADocxGenerator()
-    
-    # Sample data
-    patient_data = {
-        'patient_name': 'Mrs. Priya (PNM00791)',
-        'patient_spouse': 'Mrs. Priya (PNM00791)',
-        'spouse_name': 'Mr. Saranraj',
-        'pin': 'AND25630004206',
-        'age': '34 Years',
-        'sample_number': '632504349',
-        'referring_clinician': 'Dr. Ajantha. B',
-        'biopsy_date': '03-01-2026',
-        'hospital_clinic': 'Rhea Healthcare Private Limited Annanagar (NOVA IVF)',
-        'sample_collection_date': '03-01-2026',
-        'specimen': 'Day 6 Trophectoderm Biopsy',
-        'sample_receipt_date': '03-01-2026',
-        'biopsy_performed_by': 'Raj Priya Pandian',
-        'report_date': '14-01-2026',
-        'indication': 'History of implantation failure.'
-    }
-    
-    embryos_data = [
-        {
-            'embryo_id': 'PS4',
-            'result_summary': 'Trisomy of chromosome 16',
-            'mtcopy': 'NA',
-            'interpretation': 'Aneuploid',
-            'result_description': 'The embryo contains abnormal chromosome complement',
-            'autosomes': 'Trisomy of chromosome 16',
-            'sex_chromosomes': 'Normal',
-            'chromosome_statuses': {str(i): 'N' for i in range(1, 23)},
-            'mosaic_percentages': {},
-            'cnv_image_path': 'assets/pgta/page4_image_3.jpg'
-        }
-    ]
-    
-    embryos_data[0]['chromosome_statuses']['16'] = 'G'
-    
-    # Generate DOCX
-    output_path = "test_report.docx"
-    generator.generate_docx(output_path, patient_data, embryos_data)
-    print(f"Test DOCX report generated: {output_path}")
+        # Check for simple abbreviations at word boundaries
+        words = s.split()
+        for word in words:
+            if word in ['L', 'G', 'SL', 'SG']:
+                return "#FF0000"
+            if word in ['MG', 'ML', 'SMG', 'SML', 'M']:
+                return "#0000FF"
+        return "#000000"
