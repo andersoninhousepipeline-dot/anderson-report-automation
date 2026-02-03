@@ -1820,7 +1820,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                     img = Image.open(file_path)
                     text = pytesseract.image_to_string(img)
                 else:
-                    return None, "Image OCR requires pytesseract. Please install it."
+                    return None, "Image OCR requires pytesseract. Please install: pip install pytesseract\nAlso install Tesseract OCR: sudo apt install tesseract-ocr"
             else:
                 return None, f"Unsupported file format: {file_ext}"
                 
@@ -1867,66 +1867,50 @@ class PGTAReportGeneratorApp(QMainWindow):
         
         return False, "not found"
     
-    def verify_patient_data(self, trf_text, patient_data):
-        """Verify patient data against TRF text and return results"""
-        results = []
-        all_correct = True
-        
-        fields_to_check = [
-            ('patient_name', 'Patient Name'),
-            ('hospital_clinic', 'Hospital/Clinic'),
-            ('pin', 'PIN/Sample ID'),
-            ('biopsy_date', 'Biopsy Date'),
-            ('sample_receipt_date', 'Sample Receipt Date'),
-        ]
-        
-        for field_key, field_label in fields_to_check:
-            value = patient_data.get(field_key, '')
-            if not value or value.lower() in ['nan', 'none', '']:
-                results.append({
-                    'field': field_label,
-                    'status': 'skip',
-                    'message': 'No data entered',
-                    'icon': '⚪'
-                })
-                continue
-            
-            found, context = self.find_in_text(trf_text, value)
-            
-            if found:
-                results.append({
-                    'field': field_label,
-                    'status': 'ok',
-                    'message': f'Found ({context})',
-                    'icon': '✅'
-                })
-            else:
-                all_correct = False
-                # Try to find similar text in TRF
-                suggestion = self.find_similar_in_trf(trf_text, field_key, value)
-                results.append({
-                    'field': field_label,
-                    'status': 'warning',
-                    'message': f'Not found in TRF. Entered: "{value}"' + (f' | Suggestion: "{suggestion}"' if suggestion else ''),
-                    'icon': '⚠️'
-                })
-        
-        return results, all_correct
-    
-    def find_similar_in_trf(self, trf_text, field_key, entered_value):
-        """Try to find what might be the correct value in TRF"""
+    def extract_field_from_trf(self, trf_text, field_key):
+        """Extract specific field value from TRF text using patterns"""
         if not trf_text:
             return None
         
         lines = trf_text.split('\n')
         
-        # Field-specific patterns
+        # Enhanced field-specific patterns
         patterns = {
-            'patient_name': [r'name[:\s]*([A-Za-z\s\.]+)', r'patient[:\s]*([A-Za-z\s\.]+)'],
-            'hospital_clinic': [r'hospital[:\s]*(.+)', r'clinic[:\s]*(.+)', r'center[:\s]*(.+)'],
-            'pin': [r'pin[:\s]*(\S+)', r'sample\s*id[:\s]*(\S+)', r'id[:\s]*(\S+)'],
-            'biopsy_date': [r'biopsy\s*date[:\s]*(\S+)', r'date\s*of\s*biopsy[:\s]*(\S+)'],
-            'sample_receipt_date': [r'receipt\s*date[:\s]*(\S+)', r'received[:\s]*(\S+)'],
+            'patient_name': [
+                r'patient\s*name[:\s]*([A-Za-z\s\.]+?)(?:\n|$|wife|husband|w/o|s/o|d/o)',
+                r'name\s*of\s*patient[:\s]*([A-Za-z\s\.]+?)(?:\n|$)',
+                r'(?:mrs?\.?|miss|dr\.?)\s+([A-Za-z\s\.]+?)(?:\n|$|wife)',
+                r'name[:\s]*([A-Za-z][A-Za-z\s\.]{2,30})(?:\n|$)',
+            ],
+            'hospital_clinic': [
+                r'(?:hospital|clinic|center|centre)[:\s]*([^\n]+)',
+                r'(?:ivf|fertility)\s*(?:center|centre|clinic)[:\s]*([^\n]*)',
+                r'from[:\s]*([^\n]+(?:hospital|clinic|center|centre|ivf)[^\n]*)',
+            ],
+            'pin': [
+                r'(?:pin|patient\s*id|sample\s*id|id\s*no)[:\s\.]*([A-Z0-9]+)',
+                r'(?:AND|PIN)[:\s]*([A-Z0-9]+)',
+                r'sample[:\s]*([A-Z0-9]+)',
+            ],
+            'biopsy_date': [
+                r'(?:date\s*of\s*)?biopsy[:\s]*(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})',
+                r'biopsy\s*date[:\s]*(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})',
+                r'collection\s*date[:\s]*(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})',
+            ],
+            'sample_receipt_date': [
+                r'(?:sample\s*)?receipt\s*date[:\s]*(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})',
+                r'received[:\s]*(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})',
+                r'date\s*received[:\s]*(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})',
+            ],
+            'referring_clinician': [
+                r'(?:referring\s*)?(?:clinician|doctor|dr)[:\s]*([A-Za-z\s\.]+?)(?:\n|$)',
+                r'referred\s*by[:\s]*([A-Za-z\s\.]+?)(?:\n|$)',
+                r'(?:dr\.?|doctor)\s+([A-Za-z\s\.]+?)(?:\n|$)',
+            ],
+            'embryologist': [
+                r'embryologist[:\s]*([A-Za-z\s\.]+?)(?:\n|$)',
+                r'biologist[:\s]*([A-Za-z\s\.]+?)(?:\n|$)',
+            ],
         }
         
         if field_key in patterns:
@@ -1934,27 +1918,277 @@ class PGTAReportGeneratorApp(QMainWindow):
                 for line in lines:
                     match = re.search(pattern, line, re.IGNORECASE)
                     if match:
-                        return match.group(1).strip()
+                        extracted = match.group(1).strip()
+                        # Clean up extracted value
+                        extracted = re.sub(r'\s+', ' ', extracted)
+                        if len(extracted) > 2:
+                            return extracted
+                # Also try on full text
+                match = re.search(pattern, trf_text, re.IGNORECASE)
+                if match:
+                    extracted = match.group(1).strip()
+                    extracted = re.sub(r'\s+', ' ', extracted)
+                    if len(extracted) > 2:
+                        return extracted
         
         return None
     
-    def format_verification_result(self, results, all_correct):
-        """Format verification results as HTML"""
-        if all_correct:
-            html = "<div style='padding:10px;'>"
-            html += "<h4 style='color:#28a745; margin:0 0 10px 0;'>✅ All Verified Fields Match!</h4>"
+    def verify_patient_data_enhanced(self, trf_text, patient_data):
+        """Enhanced verification with extracted values and comparison"""
+        results = []
+        all_correct = True
+        has_suggestions = False
+        
+        fields_to_check = [
+            ('patient_name', 'Patient Name', 'patient_name_input'),
+            ('hospital_clinic', 'Hospital/Clinic', 'hospital_clinic_input'),
+            ('pin', 'PIN/Sample ID', 'pin_input'),
+            ('biopsy_date', 'Biopsy Date', 'biopsy_date_input'),
+            ('sample_receipt_date', 'Receipt Date', 'sample_receipt_date_input'),
+            ('referring_clinician', 'Referring Clinician', 'referring_clinician_input'),
+        ]
+        
+        for field_key, field_label, widget_name in fields_to_check:
+            entered_value = patient_data.get(field_key, '')
+            trf_value = self.extract_field_from_trf(trf_text, field_key)
+            
+            # Skip if no data entered and nothing found in TRF
+            if (not entered_value or entered_value.lower() in ['nan', 'none', '', 'w/o']) and not trf_value:
+                results.append({
+                    'field': field_label,
+                    'field_key': field_key,
+                    'widget': widget_name,
+                    'status': 'skip',
+                    'entered': entered_value or '(empty)',
+                    'trf_value': '(not found)',
+                    'message': 'No data',
+                    'icon': '⚪',
+                    'can_apply': False
+                })
+                continue
+            
+            # If entered value exists, check if it matches TRF
+            if entered_value and entered_value.lower() not in ['nan', 'none', '', 'w/o']:
+                found, match_type = self.find_in_text(trf_text, entered_value)
+                
+                if found:
+                    results.append({
+                        'field': field_label,
+                        'field_key': field_key,
+                        'widget': widget_name,
+                        'status': 'ok',
+                        'entered': entered_value,
+                        'trf_value': trf_value or entered_value,
+                        'message': f'✓ Match ({match_type})',
+                        'icon': '✅',
+                        'can_apply': False
+                    })
+                else:
+                    all_correct = False
+                    if trf_value:
+                        has_suggestions = True
+                        results.append({
+                            'field': field_label,
+                            'field_key': field_key,
+                            'widget': widget_name,
+                            'status': 'mismatch',
+                            'entered': entered_value,
+                            'trf_value': trf_value,
+                            'message': '✗ Mismatch',
+                            'icon': '❌',
+                            'can_apply': True
+                        })
+                    else:
+                        results.append({
+                            'field': field_label,
+                            'field_key': field_key,
+                            'widget': widget_name,
+                            'status': 'warning',
+                            'entered': entered_value,
+                            'trf_value': '(not found in TRF)',
+                            'message': '⚠ Not verified',
+                            'icon': '⚠️',
+                            'can_apply': False
+                        })
+            else:
+                # No entered value but TRF has value - suggest auto-fill
+                if trf_value:
+                    has_suggestions = True
+                    results.append({
+                        'field': field_label,
+                        'field_key': field_key,
+                        'widget': widget_name,
+                        'status': 'suggestion',
+                        'entered': '(empty)',
+                        'trf_value': trf_value,
+                        'message': '💡 Found in TRF',
+                        'icon': '💡',
+                        'can_apply': True
+                    })
+        
+        return results, all_correct, has_suggestions
+    
+    def show_trf_comparison_dialog(self, results, is_batch=False):
+        """Show a dialog with side-by-side comparison and apply options"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("TRF Verification Results")
+        dialog.setMinimumWidth(700)
+        dialog.setMinimumHeight(450)
+        
+        layout = QVBoxLayout()
+        dialog.setLayout(layout)
+        
+        # Header
+        all_match = all(r['status'] in ['ok', 'skip'] for r in results)
+        if all_match:
+            header = QLabel("✅ All fields verified successfully!")
+            header.setStyleSheet("font-size: 16px; font-weight: bold; color: #28a745; padding: 10px;")
         else:
-            html = "<div style='padding:10px;'>"
-            html += "<h4 style='color:#dc3545; margin:0 0 10px 0;'>⚠️ Some Fields Need Attention</h4>"
+            header = QLabel("⚠️ Some fields need attention - Review differences below")
+            header.setStyleSheet("font-size: 16px; font-weight: bold; color: #dc3545; padding: 10px;")
+        layout.addWidget(header)
         
-        html += "<table style='width:100%; font-size:12px;'>"
-        for r in results:
-            color = '#28a745' if r['status'] == 'ok' else '#ffc107' if r['status'] == 'warning' else '#6c757d'
-            html += f"<tr><td style='padding:3px;'>{r['icon']} <b>{r['field']}</b></td>"
-            html += f"<td style='padding:3px; color:{color};'>{r['message']}</td></tr>"
-        html += "</table></div>"
+        # Comparison Table
+        table = QTableWidget()
+        table.setColumnCount(5)
+        table.setHorizontalHeaderLabels(["Field", "Current Value", "TRF Value", "Status", "Action"])
+        table.horizontalHeader().setStretchLastSection(True)
+        table.setColumnWidth(0, 120)
+        table.setColumnWidth(1, 180)
+        table.setColumnWidth(2, 180)
+        table.setColumnWidth(3, 100)
+        table.setColumnWidth(4, 80)
         
-        return html
+        table.setRowCount(len(results))
+        self.trf_apply_buttons = []
+        
+        for i, r in enumerate(results):
+            # Field name
+            table.setItem(i, 0, QTableWidgetItem(r['field']))
+            
+            # Current value
+            current_item = QTableWidgetItem(r['entered'])
+            if r['status'] == 'mismatch':
+                current_item.setBackground(QColor('#ffcccc'))
+            table.setItem(i, 1, current_item)
+            
+            # TRF value
+            trf_item = QTableWidgetItem(r['trf_value'])
+            if r['status'] in ['mismatch', 'suggestion']:
+                trf_item.setBackground(QColor('#ccffcc'))
+            table.setItem(i, 2, trf_item)
+            
+            # Status
+            status_item = QTableWidgetItem(r['message'])
+            if r['status'] == 'ok':
+                status_item.setForeground(QColor('#28a745'))
+            elif r['status'] in ['mismatch', 'warning']:
+                status_item.setForeground(QColor('#dc3545'))
+            elif r['status'] == 'suggestion':
+                status_item.setForeground(QColor('#007bff'))
+            table.setItem(i, 3, status_item)
+            
+            # Apply button
+            if r['can_apply'] and r['trf_value'] and r['trf_value'] != '(not found)':
+                apply_btn = QPushButton("Apply")
+                apply_btn.setStyleSheet("background-color: #28a745; color: white; padding: 3px 8px;")
+                apply_btn.clicked.connect(lambda checked, idx=i, res=r, batch=is_batch: self.apply_single_trf_value(res, batch, dialog, table, idx))
+                table.setCellWidget(i, 4, apply_btn)
+                self.trf_apply_buttons.append((apply_btn, r))
+            else:
+                table.setItem(i, 4, QTableWidgetItem(""))
+        
+        layout.addWidget(table)
+        
+        # Store for apply all
+        self.trf_results = results
+        self.trf_is_batch = is_batch
+        self.trf_dialog = dialog
+        self.trf_table = table
+        
+        # Buttons
+        btn_layout = QHBoxLayout()
+        
+        # Apply All Suggestions button
+        suggestions = [r for r in results if r['can_apply']]
+        if suggestions:
+            apply_all_btn = QPushButton(f"✓ Apply All Suggestions ({len(suggestions)})")
+            apply_all_btn.setStyleSheet("background-color: #007bff; color: white; padding: 8px 16px; font-weight: bold;")
+            apply_all_btn.clicked.connect(lambda: self.apply_all_trf_values(is_batch, dialog))
+            btn_layout.addWidget(apply_all_btn)
+        
+        btn_layout.addStretch()
+        
+        # Close button
+        close_btn = QPushButton("Close")
+        close_btn.setStyleSheet("padding: 8px 16px;")
+        close_btn.clicked.connect(dialog.accept)
+        btn_layout.addWidget(close_btn)
+        
+        layout.addLayout(btn_layout)
+        
+        # Info text
+        info = QLabel("💡 Tip: Click 'Apply' to use TRF value, or 'Apply All' to accept all suggestions")
+        info.setStyleSheet("color: #666; font-style: italic; padding: 5px;")
+        layout.addWidget(info)
+        
+        dialog.exec()
+    
+    def apply_single_trf_value(self, result, is_batch, dialog, table, row_idx):
+        """Apply a single TRF value to the corresponding field"""
+        field_key = result['field_key']
+        trf_value = result['trf_value']
+        widget_name = result['widget']
+        
+        if is_batch:
+            widget_map = {
+                'patient_name_input': self.batch_patient_name,
+                'hospital_clinic_input': self.batch_hospital,
+                'pin_input': self.batch_pin,
+                'biopsy_date_input': self.batch_biopsy_date,
+                'sample_receipt_date_input': self.batch_sample_receipt_date,
+                'referring_clinician_input': self.batch_referring_clinician,
+            }
+        else:
+            widget_map = {
+                'patient_name_input': self.patient_name_input,
+                'hospital_clinic_input': self.hospital_clinic_input,
+                'pin_input': self.pin_input,
+                'biopsy_date_input': self.biopsy_date_input,
+                'sample_receipt_date_input': self.sample_receipt_date_input,
+                'referring_clinician_input': self.referring_clinician_input,
+            }
+        
+        if widget_name in widget_map:
+            widget = widget_map[widget_name]
+            if hasattr(widget, 'setText'):
+                widget.setText(trf_value)
+            elif hasattr(widget, 'setPlainText'):
+                widget.setPlainText(trf_value)
+            
+            # Update table to show applied
+            table.item(row_idx, 1).setText(trf_value)
+            table.item(row_idx, 1).setBackground(QColor('#ccffcc'))
+            table.item(row_idx, 3).setText("✓ Applied")
+            table.item(row_idx, 3).setForeground(QColor('#28a745'))
+            
+            # Remove apply button
+            table.removeCellWidget(row_idx, 4)
+            table.setItem(row_idx, 4, QTableWidgetItem("Done"))
+            
+            self.statusBar().showMessage(f"Applied TRF value to {result['field']}")
+    
+    def apply_all_trf_values(self, is_batch, dialog):
+        """Apply all TRF suggestions"""
+        applied_count = 0
+        
+        for i, r in enumerate(self.trf_results):
+            if r['can_apply'] and r['trf_value'] and r['trf_value'] != '(not found)':
+                self.apply_single_trf_value(r, is_batch, dialog, self.trf_table, i)
+                applied_count += 1
+        
+        QMessageBox.information(self, "Applied", f"Successfully applied {applied_count} values from TRF!")
+        self.statusBar().showMessage(f"Applied {applied_count} values from TRF")
     
     def upload_trf_manual(self):
         """Upload TRF for manual entry verification"""
@@ -2000,14 +2234,20 @@ class PGTAReportGeneratorApp(QMainWindow):
             'pin': self.pin_input.toPlainText().strip(),
             'biopsy_date': self.biopsy_date_input.text().strip(),
             'sample_receipt_date': self.sample_receipt_date_input.text().strip(),
+            'referring_clinician': self.referring_clinician_input.toPlainText().strip(),
         }
         
-        # Verify
-        results, all_correct = self.verify_patient_data(trf_text, patient_data)
+        # Enhanced verification
+        results, all_correct, has_suggestions = self.verify_patient_data_enhanced(trf_text, patient_data)
         
-        # Display results
-        html = self.format_verification_result(results, all_correct)
-        self.trf_result_text.setHtml(html)
+        # Show comparison dialog
+        self.show_trf_comparison_dialog(results, is_batch=False)
+        
+        # Update result text
+        if all_correct:
+            self.trf_result_text.setHtml("<span style='color:#28a745;'>✅ All fields verified! Click 'Verify' again to re-check.</span>")
+        else:
+            self.trf_result_text.setHtml("<span style='color:#ffc107;'>⚠️ Review completed. Some fields may need attention.</span>")
     
     def upload_trf_batch(self):
         """Upload TRF for batch entry verification"""
@@ -2052,14 +2292,20 @@ class PGTAReportGeneratorApp(QMainWindow):
             'pin': self.batch_pin.toPlainText().strip(),
             'biopsy_date': self.batch_biopsy_date.text().strip(),
             'sample_receipt_date': self.batch_sample_receipt_date.text().strip(),
+            'referring_clinician': self.batch_referring_clinician.toPlainText().strip(),
         }
         
-        # Verify
-        results, all_correct = self.verify_patient_data(trf_text, patient_data)
+        # Enhanced verification
+        results, all_correct, has_suggestions = self.verify_patient_data_enhanced(trf_text, patient_data)
         
-        # Display results
-        html = self.format_verification_result(results, all_correct)
-        self.batch_trf_result_text.setHtml(html)
+        # Show comparison dialog
+        self.show_trf_comparison_dialog(results, is_batch=True)
+        
+        # Update result text
+        if all_correct:
+            self.batch_trf_result_text.setHtml("<span style='color:#28a745;'>✅ All fields verified!</span>")
+        else:
+            self.batch_trf_result_text.setHtml("<span style='color:#ffc107;'>⚠️ Review completed. Some fields may need attention.</span>")
     
     # ==================== End TRF Verification Methods ====================
     
