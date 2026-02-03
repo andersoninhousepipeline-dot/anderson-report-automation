@@ -273,6 +273,13 @@ class PGTAReportTemplate:
             alignment=TA_CENTER
         ))
         
+        # Left-aligned Body style for patient info values (no justify gaps)
+        self.styles.add(ParagraphStyle(
+            name='PGTALeftBodyText',
+            parent=self.styles['PGTABodyText'],
+            alignment=TA_LEFT
+        ))
+        
         # Label text style (Force RIGHT alignment, NO justification)
         self.styles.add(ParagraphStyle(
             name='PGTALabelText',
@@ -457,11 +464,15 @@ class PGTAReportTemplate:
             if content.lower() != "<br/>": # Keep explicit breaks if user intentionally added them? 
                 # Actually if it's JUST a break, they might want it. 
                 # Let's only skip 'nan'.
-                return "" if content.lower() == "nan" else Paragraph(content, self.styles['PGTABodyText'])
+                return "" if content.lower() == "nan" else Paragraph(content, self.styles['PGTALeftBodyText'])
             
-        style_name = 'PGTABodyText'
+        # Select appropriate style based on alignment
         if align == 'CENTER':
             style_name = 'PGTACenteredBodyText'
+        elif align == 'LEFT':
+            style_name = 'PGTALeftBodyText'  # Use LEFT aligned style to avoid justify gaps
+        else:
+            style_name = 'PGTABodyText'  # Default with justify
         
         # Determine style and font size override
         use_style = self.styles[style_name]
@@ -492,9 +503,14 @@ class PGTAReportTemplate:
         """Create patient information table"""
         # Prepare data with Paragraph wrapping to prevent overlap
         # Standard widths for cover page: [85, 12, 146, 85, 12, 150] Total: 490pt
+        
+        # Combine patient name and spouse name on same line
+        patient_name = self._clean(patient_data.get('patient_name'))
+        spouse_name = self._clean(patient_data.get('spouse_name'))
+        combined_name = f"{patient_name} {spouse_name}".strip() if spouse_name else patient_name
+        
         data = [
-            [self._wrap_text('<b>Patient name</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('patient_name'))}</b>", max_width=140), self._wrap_text('<b>PIN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('pin'))}</b>", max_width=144)],
-            [self._wrap_text(''), self._wrap_text(''), self._wrap_text(f"<b>{self._clean(patient_data.get('spouse_name'))}</b>", max_width=140), self._wrap_text(''), self._wrap_text(''), self._wrap_text('')],
+            [self._wrap_text('<b>Patient name</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{combined_name}</b>", max_width=140), self._wrap_text('<b>PIN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('pin'))}</b>", max_width=144)],
             [self._wrap_text('<b>Date of Birth/ Age</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('age'))}</b>", max_width=140), self._wrap_text('<b>Sample Number</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_number'))}</b>", max_width=144)],
             [self._wrap_text('<b>Referring Clinician</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('referring_clinician'))}</b>", max_width=140), self._wrap_text('<b>Biopsy date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_date'))}</b>", max_width=144)],
             [self._wrap_text('<b>Hospital/Clinic</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('hospital_clinic'))}</b>", max_width=140), self._wrap_text('<b>Sample collection date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_collection_date'))}</b>", max_width=144)],
@@ -638,21 +654,18 @@ class PGTAReportTemplate:
             if not text: return ""
             return Paragraph(str(text), self.styles['PGTABannerValueText'])
 
+        # Combine patient name and spouse name on same line
+        patient_name = self._clean(patient_data.get('patient_name'))
+        spouse_name = self._clean(patient_data.get('spouse_name'))
+        combined_name = f"{patient_name} {spouse_name}".strip() if spouse_name else patient_name
+
         info_data = [[
             self._wrap_label('Patient name'),
             _wrap_banner(':'),
-            _wrap_banner(f"<b>{self._clean(patient_data.get('patient_name'))}</b>"),
+            _wrap_banner(f"<b>{combined_name}</b>"),
             self._wrap_label('PIN'),
             _wrap_banner(':'),
             _wrap_banner(f"<b>{self._clean(patient_data.get('pin'))}</b>")
-        ],
-        [
-            self._wrap_text(''),
-            self._wrap_text(''),
-            _wrap_banner(f"<b>{self._clean(patient_data.get('spouse_name'))}</b>"),
-            self._wrap_text(''),
-            self._wrap_text(''),
-            self._wrap_text('')
         ]]
         
         # Optimized widths for detailed banner [Total: 490pt]
