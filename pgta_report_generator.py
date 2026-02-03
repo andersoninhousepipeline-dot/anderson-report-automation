@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
     QSplitter, QTextBrowser, QRadioButton, QDialog, QDialogButtonBox
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings, QTimer
-from PyQt6.QtGui import QPixmap, QIcon
+from PyQt6.QtGui import QPixmap, QIcon, QColor, QBrush
 try:
     from PyQt6.QtPdf import QPdfDocument
     from PyQt6.QtPdfWidgets import QPdfView
@@ -49,6 +49,24 @@ class ClickOnlyComboBox(QComboBox):
     """Subclass of QComboBox that ignores mouse wheel events to prevent accidental changes when scrolling."""
     def wheelEvent(self, event):
         event.ignore()
+
+
+def add_colored_items_to_combo(combo, items_with_colors):
+    """
+    Add items with specific colors to a combo box.
+    items_with_colors: list of tuples (text, color) where color is 'black', 'red', or 'blue'
+    """
+    color_map = {
+        'black': QColor(0, 0, 0),
+        'red': QColor(255, 0, 0),
+        'blue': QColor(0, 0, 255)
+    }
+    
+    for text, color_name in items_with_colors:
+        combo.addItem(text)
+        index = combo.count() - 1
+        combo.setItemData(index, QBrush(color_map.get(color_name, QColor(0, 0, 0))), Qt.ItemDataRole.ForegroundRole)
+
 
 class PreviewWorker(QThread):
     """Worker thread for generating preview PDF"""
@@ -627,7 +645,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                 
                 # Try to get data from summary table first for high-level info
                 res_sum = ""
-                interp = "Euploid"
+                interp = "NA"
                 mtcopy = "NA"
                 
                 if self.summary_table.rowCount() > idx:
@@ -635,8 +653,9 @@ class PGTAReportGeneratorApp(QMainWindow):
                      item_id = self.summary_table.item(idx, 0)
                      if item_id: embryo_id = item_id.text()
                      
-                     item_res = self.summary_table.item(idx, 1)
-                     if item_res: res_sum = item_res.text()
+                     # Column 1 is now a dropdown widget (Result Summary)
+                     widget_res = self.summary_table.cellWidget(idx, 1)
+                     if widget_res: res_sum = widget_res.currentText()
                      
                      widget_interp = self.summary_table.cellWidget(idx, 2)
                      if widget_interp: interp = widget_interp.currentText()
@@ -646,9 +665,21 @@ class PGTAReportGeneratorApp(QMainWindow):
 
                 # Get Detailed Info (Result Desc, Autosomes, Image, Chromosomes)
                 # If form_dict has references:
-                result_desc = form_dict.get('result_description', QLineEdit()).text()
+                # result_description and sex_chromosomes are now combo boxes
+                result_desc_widget = form_dict.get('result_description')
+                if result_desc_widget and hasattr(result_desc_widget, 'currentText'):
+                    result_desc = result_desc_widget.currentText()
+                else:
+                    result_desc = ""
+                    
                 autosomes = form_dict.get('autosomes', QLineEdit()).text()
-                sex = form_dict.get('sex_chromosomes', QLineEdit()).text()
+                
+                sex_widget = form_dict.get('sex_chromosomes')
+                if sex_widget and hasattr(sex_widget, 'currentText'):
+                    sex = sex_widget.currentText()
+                else:
+                    sex = "Normal"
+                    
                 img_path = form_dict.get('chart_path_label', QLabel()).property("filepath")
                 
                 chr_statuses = {}
@@ -719,12 +750,32 @@ class PGTAReportGeneratorApp(QMainWindow):
         for r in range(count):
             if not self.summary_table.item(r, 0): # ID
                 self.summary_table.setItem(r, 0, QTableWidgetItem(f"PS{r+1}"))
-            if not self.summary_table.item(r, 1): # Result (Summary)
-                self.summary_table.setItem(r, 1, QTableWidgetItem(""))
             
-            if not self.summary_table.cellWidget(r, 2): # Interpretation
+            if not self.summary_table.cellWidget(r, 1): # Result (Summary) - now a dropdown with colors
+                result_combo = ClickOnlyComboBox()
+                # Color scheme: Normal=Black, Multiple=Red, Mosaic=Blue, Inconclusive=Black, Low DNA=Black
+                add_colored_items_to_combo(result_combo, [
+                    ("Normal chromosome complement", "black"),
+                    ("Multiple chromosomal abnormalities", "red"), 
+                    ("Mosaic chromosome complement", "blue"),
+                    ("Inconclusive", "black"),
+                    ("Low DNA concentration", "black")
+                ])
+                result_combo.setEditable(True)
+                result_combo.setInsertPolicy(ClickOnlyComboBox.InsertPolicy.NoInsert)
+                result_combo.currentTextChanged.connect(self.update_preview)
+                self.summary_table.setCellWidget(r, 1, result_combo)
+            
+            if not self.summary_table.cellWidget(r, 2): # Interpretation - with colors
                 combo = ClickOnlyComboBox()
-                combo.addItems(["NA", "Euploid", "Aneuploid", "Low level mosaic", "High level mosaic", "Complex mosaic", "Manual Entry"])
+                # Color scheme: NA=Black, Chaotic=Red, Mosaics=Blue
+                add_colored_items_to_combo(combo, [
+                    ("NA", "black"),
+                    ("Chaotic embryo", "red"),
+                    ("Low level mosaic", "blue"),
+                    ("High level mosaic", "blue"),
+                    ("Complex mosaic", "blue")
+                ])
                 combo.setEditable(True)
                 combo.setInsertPolicy(ClickOnlyComboBox.InsertPolicy.NoInsert)
                 combo.currentTextChanged.connect(self.update_preview)
@@ -753,15 +804,32 @@ class PGTAReportGeneratorApp(QMainWindow):
         form = QFormLayout()
         group.setLayout(form)
         
-        result_description = QLineEdit()
+        # Result Description dropdown (Embryo Result Page) - All black as per spec
+        result_description = ClickOnlyComboBox()
+        add_colored_items_to_combo(result_description, [
+            ("The embryo contains normal chromosome complement", "black"),
+            ("The embryo contains abnormal chromosome complement", "black"),
+            ("The embryo contains mosaic chromosome complement", "black"),
+            ("Inconclusive", "black")
+        ])
+        result_description.setEditable(True)
+        result_description.setInsertPolicy(ClickOnlyComboBox.InsertPolicy.NoInsert)
+        
         autosomes = QLineEdit()
-        sex_chromosomes = QLineEdit()
-        sex_chromosomes.setText("Normal")
+        
+        # Sex Chromosomes dropdown - Normal=Black, Abnormal=Red
+        sex_chromosomes = ClickOnlyComboBox()
+        add_colored_items_to_combo(sex_chromosomes, [
+            ("Normal", "black"),
+            ("Abnormal", "red")
+        ])
+        sex_chromosomes.setEditable(True)
+        sex_chromosomes.setInsertPolicy(ClickOnlyComboBox.InsertPolicy.NoInsert)
         
         # Connect signals
-        result_description.textChanged.connect(self.update_preview)
+        result_description.currentTextChanged.connect(self.update_preview)
         autosomes.textChanged.connect(self.update_preview)
-        sex_chromosomes.textChanged.connect(self.update_preview)
+        sex_chromosomes.currentTextChanged.connect(self.update_preview)
         
         form.addRow("Result Description (Page 4):", result_description)
         form.addRow("Autosomes:", autosomes)
@@ -889,6 +957,17 @@ class PGTAReportGeneratorApp(QMainWindow):
         left_panel.setLayout(left_layout)
         
         left_layout.addWidget(QLabel("Patients:"))
+        
+        # Search box for filtering patients
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(QLabel("🔍"))
+        self.batch_search_input = QLineEdit()
+        self.batch_search_input.setPlaceholderText("Search by patient name...")
+        self.batch_search_input.textChanged.connect(self.filter_batch_list)
+        self.batch_search_input.setClearButtonEnabled(True)
+        search_layout.addWidget(self.batch_search_input)
+        left_layout.addLayout(search_layout)
+        
         self.batch_list_widget = QListWidget()
         self.batch_list_widget.currentItemChanged.connect(self.on_batch_selection_changed)
         left_layout.addWidget(self.batch_list_widget)
@@ -1094,12 +1173,52 @@ class PGTAReportGeneratorApp(QMainWindow):
                     </ul>
                 </div>
 
+                <div class="card">
+                    <h3>4. Color Coding System</h3>
+                    <ul class="feature-list">
+                        <li><span class="icon" style="background:#FF0000;color:white;">R</span> <b>Red:</b> Non-mosaic abnormalities - del/dup without %, CNV status L/G/SL/SG</li>
+                        <li><span class="icon" style="background:#0000FF;color:white;">B</span> <b>Blue:</b> Mosaic abnormalities - any result containing % (e.g., +15(~30%), dup with ~32%)</li>
+                        <li><span class="icon" style="background:#000000;color:white;">N</span> <b>Black:</b> Normal/Euploid results</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3>5. Excel File Format</h3>
+                    <ul class="feature-list">
+                        <li><span class="icon">📊</span> <b>Required Sheets:</b> 'Details' (patient info) and 'summary' (embryo results)</li>
+                        <li><span class="icon">📝</span> <b>Details Columns:</b> Patient Name, Sample ID, Center name, Date of Biopsy, Date Sample Received, EMBRYOLOGIST NAME</li>
+                        <li><span class="icon">🧬</span> <b>Summary Columns:</b> Sample name, QC, Conclusion, Result, MTcopy, AUTOSOMES, SEX</li>
+                        <li><span class="icon">⚠️</span> <b>Note:</b> Referring Clinician and Sample Number fields are NOT auto-filled - enter manually</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3>6. System Requirements</h3>
+                    <ul class="feature-list">
+                        <li><span class="icon">🐍</span> <b>Python:</b> Version 3.8 or higher</li>
+                        <li><span class="icon">📦</span> <b>Required Packages:</b> PyQt6, ReportLab, python-docx, pandas, openpyxl, Pillow</li>
+                        <li><span class="icon">💻</span> <b>OS:</b> Windows, Linux, or macOS</li>
+                        <li><span class="icon">📁</span> <b>Storage:</b> 100MB for application + space for generated reports</li>
+                    </ul>
+                    <p style="margin-top:15px;"><b>Installation:</b> <code style="background:#f1f1f1;padding:5px 10px;border-radius:3px;">pip install -r requirements.txt</code></p>
+                </div>
+
+                <div class="card">
+                    <h3>7. Quick Start</h3>
+                    <ul class="feature-list">
+                        <li><span class="icon">1</span> Install requirements: <code>pip install -r requirements.txt</code></li>
+                        <li><span class="icon">2</span> Run application: <code>python pgta_report_generator.py</code></li>
+                        <li><span class="icon">3</span> For Manual Entry: Fill patient details → Add embryo data → Generate</li>
+                        <li><span class="icon">4</span> For Bulk Upload: Browse Excel → Search/Select patient → Review → Generate All</li>
+                    </ul>
+                </div>
+
                 <div class="tip">
-                    <b>Note:</b> This software is designed to be template-agnostic and will support additional report formats in future updates.
+                    <b>Pro Tip:</b> Use the search box in Bulk Upload to quickly find patients by name instead of scrolling through the list.
                 </div>
                 
                 <p style="text-align: center; color: #888; margin-top: 40px; font-size: 12px;">
-                    PGT-A Clinical Reporting Suite | Technical Support Available
+                    PGT-A Clinical Reporting Suite v2.0 | © 2026 Andrology Center
                 </p>
             </div>
         </body>
@@ -1108,20 +1227,6 @@ class PGTAReportGeneratorApp(QMainWindow):
         guide.setHtml(content)
         layout.addWidget(guide)
         return tab
-        self.progress_label.setVisible(False)
-        layout.addWidget(self.progress_label)
-        
-        # Generate button
-        self.generate_btn = QPushButton("Generate Reports")
-        self.generate_btn.setObjectName("generate_btn") # For QSS
-        self.generate_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
-        self.generate_btn.clicked.connect(self.generate_reports)
-        layout.addWidget(self.generate_btn)
-        
-        layout.addStretch()
-        
-        return tab
-    
 
 
     def copy_last_embryo(self):
@@ -1150,9 +1255,10 @@ class PGTAReportGeneratorApp(QMainWindow):
         
         if new_index < len(self.embryo_forms):
             form = self.embryo_forms[new_index]
-            form['result_description'].setText(last_embryo.get('result_description', ''))
+            # result_description and sex_chromosomes are now combo boxes
+            form['result_description'].setCurrentText(last_embryo.get('result_description', ''))
             form['autosomes'].setText(last_embryo.get('autosomes', ''))
-            form['sex_chromosomes'].setText(last_embryo.get('sex_chromosomes', ''))
+            form['sex_chromosomes'].setCurrentText(last_embryo.get('sex_chromosomes', 'Normal'))
             
             # Chromosomes
             chr_statuses = last_embryo.get('chromosome_statuses', {})
@@ -1166,8 +1272,11 @@ class PGTAReportGeneratorApp(QMainWindow):
             
             # Summary Table
             # Note: summary_table ID is handled by update_embryo_forms, but we copy the rest
+            # Column 1 (Result Summary) is now a combo box
             val_summary = last_embryo.get('result_summary', '')
-            self.summary_table.setItem(new_index, 1, QTableWidgetItem(val_summary))
+            w_res_sum = self.summary_table.cellWidget(new_index, 1)
+            if w_res_sum and isinstance(w_res_sum, QComboBox):
+                w_res_sum.setCurrentText(val_summary)
             w_interp = self.summary_table.cellWidget(new_index, 2)
             if w_interp and isinstance(w_interp, QComboBox):
                 w_interp.setCurrentText(last_embryo.get('interpretation', ''))
@@ -1441,8 +1550,9 @@ class PGTAReportGeneratorApp(QMainWindow):
             item_id = self.summary_table.item(i, 0)
             t_id = item_id.text() if item_id else ""
             
-            item_sum = self.summary_table.item(i, 1)
-            t_sum = item_sum.text() if item_sum else ""
+            # Column 1 (Result Summary) is now a combo box
+            w_sum = self.summary_table.cellWidget(i, 1)
+            t_sum = w_sum.currentText() if w_sum else ""
             
             w_interp = self.summary_table.cellWidget(i, 2)
             t_interp = w_interp.currentText() if w_interp else ""
@@ -1460,9 +1570,10 @@ class PGTAReportGeneratorApp(QMainWindow):
             
             if i < len(self.embryo_forms):
                 form = self.embryo_forms[i]
-                result_desc = form['result_description'].text()
+                # result_description and sex_chromosomes are now combo boxes
+                result_desc = form['result_description'].currentText() if hasattr(form['result_description'], 'currentText') else form['result_description'].text()
                 autosomes = form['autosomes'].text()
-                sex = form['sex_chromosomes'].text()
+                sex = form['sex_chromosomes'].currentText() if hasattr(form['sex_chromosomes'], 'currentText') else form['sex_chromosomes'].text()
                 
                 # Image
                 if 'chart_path_label' in form:
@@ -1494,6 +1605,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                 'mtcopy': t_mt,
                 'result_description': result_desc,
                 'autosomes': autosomes,
+                'sex_chromosomes': sex,
                 'cnv_image_path': cnv_image_path,
                 'chromosome_statuses': chr_statuses,
                 'mosaic_percentages': mosaic_percentages
@@ -1584,8 +1696,10 @@ class PGTAReportGeneratorApp(QMainWindow):
                 
             # ID
             self.summary_table.setItem(i, 0, QTableWidgetItem(embryo.get('embryo_id', f'PS{i+1}')))
-            # Summary
-            self.summary_table.setItem(i, 1, QTableWidgetItem(embryo.get('result_summary', '')))
+            # Summary - now a combo box
+            w_sum = self.summary_table.cellWidget(i, 1)
+            if w_sum and isinstance(w_sum, QComboBox):
+                 w_sum.setCurrentText(embryo.get('result_summary', ''))
             # Interp
             w_interp = self.summary_table.cellWidget(i, 2)
             if w_interp and isinstance(w_interp, QComboBox):
@@ -1600,9 +1714,16 @@ class PGTAReportGeneratorApp(QMainWindow):
                 
             form = self.embryo_forms[idx]
             
-            form['result_description'].setText(embryo.get('result_description', ''))
+            # result_description and sex_chromosomes are now combo boxes
+            if hasattr(form['result_description'], 'setCurrentText'):
+                form['result_description'].setCurrentText(embryo.get('result_description', ''))
+            else:
+                form['result_description'].setText(embryo.get('result_description', ''))
             form['autosomes'].setText(embryo.get('autosomes', ''))
-            form['sex_chromosomes'].setText(embryo.get('sex_chromosomes', ''))
+            if hasattr(form['sex_chromosomes'], 'setCurrentText'):
+                form['sex_chromosomes'].setCurrentText(embryo.get('sex_chromosomes', 'Normal'))
+            else:
+                form['sex_chromosomes'].setText(embryo.get('sex_chromosomes', ''))
             
             # Image
             path = embryo.get('cnv_image_path')
@@ -1828,8 +1949,8 @@ class PGTAReportGeneratorApp(QMainWindow):
                     'spouse_name': get_clean_value(p_row, ['Spouse Name', 'Husband Name', 'Partner Name']),
                     'pin': get_clean_value(p_row, ['Sample ID', 'PIN', 'Patient ID']),
                     'age': get_clean_value(p_row, ['Age', 'Patient Age']),
-                    'sample_number': get_clean_value(p_row, ['Sample ID', 'Sample No']),
-                    'referring_clinician': get_clean_value(p_row, ['EMBRYOLOGIST NAME', 'Referring Clinician', 'Clinician', 'Doctor']),
+                    'sample_number': '',  # Not extracted from Excel - user must fill manually
+                    'referring_clinician': '',  # Not extracted from Excel - user must fill manually
                     'biopsy_date': b_date,
                     'hospital_clinic': get_clean_value(p_row, ['Center name', 'Hospital', 'Clinic', 'Center']),
                     'sample_collection_date': b_date,
@@ -1868,19 +1989,50 @@ class PGTAReportGeneratorApp(QMainWindow):
                         base_id = sample_orig.split('_')[0]
                         embryo_id = base_id.split('-')[-1] if '-' in base_id else base_id
                         
-                        # Determine interpretation
+                        # Get values from summary sheet
                         conclusion = str(s_row.get('Conclusion', ''))
-                        interp = "Euploid"
+                        result_col = str(s_row.get('Result', ''))
+                        qc_status = str(s_row.get('QC', '')).upper()
                         
+                        # Determine Result Summary (for summary table) based on Conclusion
                         conclusion_upper = conclusion.upper()
-                        if "(-)" in conclusion:
-                             interp = "Inconclusive"
-                        elif "CHAOTIC" in conclusion_upper:
-                             interp = "Chaotic embryo" 
-                        elif "ABNORMAL" in conclusion_upper:
-                            interp = "Aneuploid"
-                        elif "MOSAIC" in conclusion_upper:
-                            interp = "Low level mosaic"
+                        result_summary_val = "Normal chromosome complement"  # Default
+                        interp = "NA"  # Default interpretation
+                        
+                        # Handle QC failures first
+                        if qc_status == 'FAIL' or 'INCONCLUSIVE' in result_col.upper() or 'RESEQUENCING' in result_col.upper():
+                            result_summary_val = "Inconclusive"
+                            interp = "NA"
+                        elif 'LOW' in result_col.upper() and ('DNA' in result_col.upper() or 'READS' in result_col.upper()):
+                            result_summary_val = "Low DNA concentration"
+                            interp = "NA"
+                        elif "CHAOTIC" in conclusion_upper or "CHAOTIC" in result_col.upper():
+                            result_summary_val = "Multiple chromosomal abnormalities"
+                            interp = "Chaotic embryo"
+                        elif "NO COPY NUMBER ABNORMALITY" in conclusion_upper or conclusion_upper == 'EUPLOID' or result_col.upper() == 'EUPLOID':
+                            result_summary_val = "Normal chromosome complement"
+                            interp = "NA"
+                        elif "MOSAIC" in conclusion_upper or "MOSAIC" in result_col.upper():
+                            result_summary_val = "Mosaic chromosome complement"
+                            # Determine mosaic level from percentage if available
+                            import re as re_local
+                            mos_match = re_local.search(r'(\d+)%', result_col)
+                            if mos_match:
+                                mos_pct = int(mos_match.group(1))
+                                if mos_pct >= 50:
+                                    interp = "High level mosaic"
+                                else:
+                                    interp = "Low level mosaic"
+                            else:
+                                interp = "Low level mosaic"
+                        elif "ABNORMAL" in conclusion_upper or conclusion_upper == 'ABNORMAL':
+                            # Check if multiple abnormalities
+                            abnormal_count = result_col.count(',') + 1 if ',' in result_col else 1
+                            if abnormal_count > 2:
+                                result_summary_val = "Multiple chromosomal abnormalities"
+                            else:
+                                result_summary_val = "Multiple chromosomal abnormalities"  # Could also be single, but safer default
+                            interp = "NA"
                         
                         # Advanced Parsing for Chromosome Statuses
                         # Example: del(5)(p15.33q12.3)(~64.50Mb,~57%)
@@ -2000,42 +2152,45 @@ class PGTAReportGeneratorApp(QMainWindow):
                             
                             return ", ".join(parts)
 
-                        # Autosomes Logic
-                        # If Euploid -> Force "Normal" (User request: "Automsomes - Euploid ( Normal )")
-                        # If Abnormal -> Generated String
-                        # Override logic:
-                        autosomes_val = ""
-                        if interp == "Euploid":
-                             autosomes_val = "Euploid ( Normal )"
+                        # --- Phase 4: Autosomes - STRICTLY from AUTOSOMES column ---
+                        # Get autosomes directly from the AUTOSOMES column in Excel
+                        autosomes_raw = str(s_row.get('AUTOSOMES', '')).strip()
+                        
+                        # Handle nan/empty values
+                        if not autosomes_raw or autosomes_raw.lower() in ['nan', 'none', 'nat', 'null', '']:
+                            # Only if AUTOSOMES column is empty, derive from result summary
+                            if result_summary_val == "Normal chromosome complement":
+                                autosomes_val = "Euploid ( Normal )"
+                            else:
+                                autosomes_val = ""  # Leave empty if no data
+                        elif autosomes_raw.lower() == 'normal':
+                            autosomes_val = "Euploid ( Normal )"
                         else:
-                             # Try to generate from stats first
-                             generated = generate_autosomes_string(p_stats, p_mos)
-                             if generated != "Normal":
-                                 autosomes_val = generated
-                             else:
-                                 # Fallback to result string if parsing failed but it's not euploid
-                                 autosomes_val = res_sum if res_sum else conclusion
+                            # Use the AUTOSOMES column value directly
+                            autosomes_val = autosomes_raw
 
                         # --- Phase 4: Result Description Mapping ---
-                        # Map short 'interp' to long description for the PDF body
+                        # Map result_summary to long description for the PDF body (Embryo Result Page)
                         long_desc = "The embryo contains normal chromosome complement" # Default
-                        if interp == "Aneuploid":
+                        if result_summary_val == "Multiple chromosomal abnormalities":
                             long_desc = "The embryo contains abnormal chromosome complement"
-                        elif interp == "Chaotic embryo":
-                            long_desc = "The embryo contains abnormal chromosome complement" # Grouped as abnormal? Or keep chaotic? Request says: "EMBRYO RESULT PAGE (Result): Mention in black colour... The embryo contains abnormal..."
-                            # Wait, "Chaotic embryo (Red colour)" in INTERPRETATION. 
-                            # But in RESULT PAGE: "The embryo contains abnormal chromosome complement" seems to be the target for Aneuploid/Chaotic?
-                            # Let's map Chaotic to Abnormal text for the "Result" row, but keep Interpretation as Chaotic.
-                            long_desc = "The embryo contains abnormal chromosome complement"
-                        elif "Mosaic" in interp:
+                        elif result_summary_val == "Mosaic chromosome complement":
                             long_desc = "The embryo contains mosaic chromosome complement"
-                        elif interp == "Inconclusive":
+                        elif result_summary_val == "Inconclusive" or result_summary_val == "Low DNA concentration":
                             long_desc = "Inconclusive"
+                        elif result_summary_val == "Normal chromosome complement":
+                            long_desc = "The embryo contains normal chromosome complement"
                         
-                        # --- Phase 4: Sex Chromosomes Logic ---
-                        sex_chr_val = "Normal"
-                        # Check X or Y in stats
-                        if 'X' in p_stats or 'Y' in p_stats:
+                        # --- Phase 4: Sex Chromosomes - STRICTLY from SEX column ---
+                        sex_raw = str(s_row.get('SEX', '')).strip()
+                        
+                        # Handle nan/empty values
+                        if not sex_raw or sex_raw.lower() in ['nan', 'none', 'nat', 'null', '']:
+                            sex_chr_val = "Normal"  # Default to Normal if no data
+                        elif sex_raw.lower() == 'normal':
+                            sex_chr_val = "Normal"
+                        else:
+                            # Any other value (e.g., "MOSAIC GAIN (52%)", abnormality descriptions)
                             sex_chr_val = "Abnormal"
 
                         # Auto-match CNV image (Restored)
@@ -2049,7 +2204,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                         
                         embryos.append({
                             'embryo_id': embryo_id,
-                            'result_summary': res_sum,
+                            'result_summary': result_summary_val,  # Use the mapped result summary
                             'interpretation': interp,
                             'result_description': long_desc, # Mapped long text
                             'autosomes': autosomes_val,
@@ -2085,6 +2240,20 @@ class PGTAReportGeneratorApp(QMainWindow):
             import traceback
             traceback.print_exc()
             QMessageBox.critical(self, "Parse Error", f"Failed to parse Excel file:\n{str(e)}")
+
+    def filter_batch_list(self, search_text):
+        """Filter the patient list based on search text"""
+        search_text = search_text.lower().strip()
+        
+        for i in range(self.batch_list_widget.count()):
+            item = self.batch_list_widget.item(i)
+            if item:
+                # Show all if search is empty, otherwise filter by name
+                if not search_text:
+                    item.setHidden(False)
+                else:
+                    item_text = item.text().lower()
+                    item.setHidden(search_text not in item_text)
 
     def on_batch_selection_changed(self, current, previous):
         """Handle batch list selection change - populate comprehensive batch editor"""
@@ -2172,13 +2341,53 @@ class PGTAReportGeneratorApp(QMainWindow):
             embryo_frame.setLayout(embryo_form)
         
             e_id = QLineEdit(embryo['embryo_id'])
-            e_result_summary = QLineEdit(embryo['result_summary'])
-            e_result_desc = QTextEdit(embryo.get('result_description', ''))
-            e_result_desc.setMaximumHeight(60)
+            
+            # Result Summary dropdown with colors
+            e_result_summary = ClickOnlyComboBox()
+            add_colored_items_to_combo(e_result_summary, [
+                ("Normal chromosome complement", "black"),
+                ("Multiple chromosomal abnormalities", "red"), 
+                ("Mosaic chromosome complement", "blue"),
+                ("Inconclusive", "black"),
+                ("Low DNA concentration", "black")
+            ])
+            e_result_summary.setEditable(True)
+            e_result_summary.setInsertPolicy(ClickOnlyComboBox.InsertPolicy.NoInsert)
+            e_result_summary.setCurrentText(embryo['result_summary'])
+            
+            # Result Description dropdown - All black as per spec
+            e_result_desc = ClickOnlyComboBox()
+            add_colored_items_to_combo(e_result_desc, [
+                ("The embryo contains normal chromosome complement", "black"),
+                ("The embryo contains abnormal chromosome complement", "black"),
+                ("The embryo contains mosaic chromosome complement", "black"),
+                ("Inconclusive", "black")
+            ])
+            e_result_desc.setEditable(True)
+            e_result_desc.setInsertPolicy(ClickOnlyComboBox.InsertPolicy.NoInsert)
+            e_result_desc.setCurrentText(embryo.get('result_description', 'The embryo contains normal chromosome complement'))
+            
             e_autosomes = QLineEdit(embryo.get('autosomes', ''))
-            e_sex_chr = QLineEdit(embryo.get('sex_chromosomes', 'Normal'))
+            
+            # Sex Chromosomes dropdown - Normal=Black, Abnormal=Red
+            e_sex_chr = ClickOnlyComboBox()
+            add_colored_items_to_combo(e_sex_chr, [
+                ("Normal", "black"),
+                ("Abnormal", "red")
+            ])
+            e_sex_chr.setEditable(True)
+            e_sex_chr.setInsertPolicy(ClickOnlyComboBox.InsertPolicy.NoInsert)
+            e_sex_chr.setCurrentText(embryo.get('sex_chromosomes', 'Normal'))
+            
+            # Interpretation dropdown with colors
             e_interp = ClickOnlyComboBox()
-            e_interp.addItems(["NA", "Euploid", "Aneuploid", "Low level mosaic", "High level mosaic", "Complex mosaic", "Manual Entry"])
+            add_colored_items_to_combo(e_interp, [
+                ("NA", "black"),
+                ("Chaotic embryo", "red"),
+                ("Low level mosaic", "blue"),
+                ("High level mosaic", "blue"),
+                ("Complex mosaic", "blue")
+            ])
             e_interp.setEditable(True)
             e_interp.setInsertPolicy(ClickOnlyComboBox.InsertPolicy.NoInsert)
             e_interp.setCurrentText(embryo['interpretation'])
@@ -2186,10 +2395,10 @@ class PGTAReportGeneratorApp(QMainWindow):
         
             # Connect Embryo Fields to Live Preview
             e_id.textChanged.connect(self.update_batch_preview)
-            e_result_summary.textChanged.connect(self.update_batch_preview)
-            e_result_desc.textChanged.connect(self.update_batch_preview)
+            e_result_summary.currentTextChanged.connect(self.update_batch_preview)
+            e_result_desc.currentTextChanged.connect(self.update_batch_preview)
             e_autosomes.textChanged.connect(self.update_batch_preview)
-            e_sex_chr.textChanged.connect(self.update_batch_preview)
+            e_sex_chr.currentTextChanged.connect(self.update_batch_preview)
             e_interp.currentTextChanged.connect(self.update_batch_preview)
             e_mtcopy.textChanged.connect(self.update_batch_preview)
         
@@ -2345,10 +2554,11 @@ class PGTAReportGeneratorApp(QMainWindow):
         for i, editor in enumerate(self.batch_embryo_editors):
             if i < len(data['embryos']):
                 data['embryos'][i]['embryo_id'] = editor['embryo_id'].text()
-                data['embryos'][i]['result_summary'] = editor['result_summary'].text()
-                data['embryos'][i]['result_description'] = editor['result_description'].toPlainText()
+                # result_summary, result_description, sex_chromosomes are now combo boxes
+                data['embryos'][i]['result_summary'] = editor['result_summary'].currentText()
+                data['embryos'][i]['result_description'] = editor['result_description'].currentText()
                 data['embryos'][i]['autosomes'] = editor['autosomes'].text()
-                data['embryos'][i]['sex_chromosomes'] = editor['sex_chromosomes'].text()
+                data['embryos'][i]['sex_chromosomes'] = editor['sex_chromosomes'].currentText()
                 data['embryos'][i]['interpretation'] = editor['interpretation'].currentText()
                 data['embryos'][i]['mtcopy'] = editor['mtcopy'].text()
                 data['embryos'][i]['cnv_image_path'] = editor['image_path']
@@ -2454,11 +2664,12 @@ class PGTAReportGeneratorApp(QMainWindow):
         for editor in self.batch_embryo_editors:
             e_data.append({
                 'embryo_id': editor['embryo_id'].text(),
-                'result_summary': editor['result_summary'].text(),
+                # result_summary, result_description, sex_chromosomes are now combo boxes
+                'result_summary': editor['result_summary'].currentText(),
                 'interpretation': editor['interpretation'].currentText(),
-                'result_description': editor['result_description'].toPlainText(),
+                'result_description': editor['result_description'].currentText(),
                 'autosomes': editor['autosomes'].text(),
-                'sex_chromosomes': editor['sex_chromosomes'].text(),
+                'sex_chromosomes': editor['sex_chromosomes'].currentText(),
                 'mtcopy': editor['mtcopy'].text(),
                 'cnv_image_path': editor['image_path'],
                 'chromosome_statuses': {ch: inp['status'].currentText() for ch, inp in editor.get('chr_inputs', {}).items()},

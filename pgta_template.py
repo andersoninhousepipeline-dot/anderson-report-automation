@@ -697,18 +697,24 @@ class PGTAReportTemplate:
         # Color based on interpretation for interpretation field
         interp_color = self._get_result_color('', interp_text)
         
-        # Autosomes Color: Same as Interp usually, but check content
-        # User: "Red colour" for L/G/SL/SG, "Blue colour" for M/ML/MG
-        # We can reuse _get_result_color on the autosomes text itself which contains L/G/SL/SG keywords?
-        # Actually our _get_result_color looks for "ANEUPLOID", "MOSAIC" keywords.
-        # The generated autosomes string contains "Status L", "Status MG".
-        # Let's verify _get_result_color handles these or add them.
-        # For now, stick with interp_color as base, but maybe override if "Mosaic" word found in text?
-        auto_color = interp_color
-        if "Mosaic" in autosomes_text or "MG" in autosomes_text or "ML" in autosomes_text:
-             auto_color = colors.blue
-        elif "Status L" in autosomes_text or "Status G" in autosomes_text:
-             auto_color = colors.red
+        # Autosomes Color Logic:
+        # Blue (mosaic) = Has % sign (e.g., +15(~30%), -20(~51%), dup(9)...(~32%))
+        # Red (non-mosaic) = del/dup/-/+ without %, or CNV status L/G/SL/SG
+        # Black = Normal/Euploid
+        auto_color = colors.black
+        auto_upper = autosomes_text.upper()
+        
+        # Check for Normal/Euploid first
+        if 'NORMAL' in auto_upper or 'EUPLOID' in auto_upper or not autosomes_text.strip():
+            auto_color = colors.black
+        # Mosaic = has % sign
+        elif '%' in autosomes_text:
+            auto_color = colors.blue
+        # Non-mosaic abnormalities (no % sign)
+        elif any(x in auto_upper for x in ['DEL(', 'DUP(', '-', '+', 'STATUS L', 'STATUS G', 'STATUS SL', 'STATUS SG', ' SL', ' SG', ' L,', ' G,', ' L ', ' G ']) or auto_upper.endswith(' L') or auto_upper.endswith(' G'):
+            auto_color = colors.red
+        elif 'CNV STATUS' in auto_upper:
+            auto_color = colors.red
         
         # Sex Chromosome Color
         sex_color = colors.black
@@ -776,20 +782,25 @@ class PGTAReportTemplate:
             except Exception as e:
                 print(f"Error loading image: {e}")
         
-        # CNV table
-        cnv_table = self._create_cnv_table(embryo_data)
-        elements.append(cnv_table)
-        elements.append(Spacer(1, 6))
+        # CNV table - Skip for Inconclusive results (only skip table, not chart)
+        result_summary = self._clean(embryo_data.get('result_summary', ''))
+        result_desc = self._clean(embryo_data.get('result_description', ''))
+        is_inconclusive = "INCONCLUSIVE" in result_summary.upper() or "INCONCLUSIVE" in result_desc.upper() or "INCONCLUSIVE" in interp_text.upper()
         
-        # Legend
-        legend = Paragraph(
-            "<i>N – Normal, G-Gain, L-Loss, SG-Segmental Gain, SL-Segmental Loss, "
-            "M-Mosaic, MG- Mosaic Gain, ML-Mosaic Loss, SMG-Segmental Mosaic Gain, "
-            "SML-Segmental Mosaic Loss</i>",
-            self.styles['PGTASmallText']
-        )
-        elements.append(legend)
-        elements.append(Spacer(1, 12))
+        if not is_inconclusive:
+            cnv_table = self._create_cnv_table(embryo_data)
+            elements.append(cnv_table)
+            elements.append(Spacer(1, 6))
+            
+            # Legend
+            legend = Paragraph(
+                "<i>N – Normal, G-Gain, L-Loss, SG-Segmental Gain, SL-Segmental Loss, "
+                "M-Mosaic, MG- Mosaic Gain, ML-Mosaic Loss, SMG-Segmental Mosaic Gain, "
+                "SML-Segmental Mosaic Loss</i>",
+                self.styles['PGTASmallText']
+            )
+            elements.append(legend)
+            elements.append(Spacer(1, 12))
         
         return elements
     
@@ -799,8 +810,11 @@ class PGTAReportTemplate:
         chr_statuses = embryo_data.get('chromosome_statuses', {})
         mosaic_percentages = embryo_data.get('mosaic_percentages', {})
         
-        # Build header
-        has_mosaic = any(mosaic_percentages.values())
+        # Check for actual mosaic percentage values (not empty, not dash, must be numeric)
+        has_mosaic = any(
+            v and str(v).strip() and str(v).strip() != '-' and str(v).strip().replace('.', '').isdigit()
+            for v in mosaic_percentages.values()
+        )
         
         if has_mosaic:
             # Header set to 9pt
