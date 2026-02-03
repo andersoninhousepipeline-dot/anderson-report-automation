@@ -2681,7 +2681,72 @@ Use null for fields not found. Return ONLY valid JSON."""
     # ==================== Bulk TRF Verification ====================
     
     def upload_bulk_trf(self):
-        """Upload multiple TRF files for bulk verification"""
+        """Upload TRF files - supports single multi-page PDF or multiple individual files"""
+        # Ask user what type of upload
+        msg = QMessageBox(self)
+        msg.setWindowTitle("TRF Upload Type")
+        msg.setText("How are your TRF files organized?")
+        msg.setInformativeText("Choose the format that matches your TRF documents:")
+        
+        single_btn = msg.addButton("📄 Single Multi-Page PDF\n(All TRFs in one file)", QMessageBox.ButtonRole.ActionRole)
+        multiple_btn = msg.addButton("📁 Multiple Individual Files\n(One file per TRF)", QMessageBox.ButtonRole.ActionRole)
+        cancel_btn = msg.addButton(QMessageBox.StandardButton.Cancel)
+        
+        msg.exec()
+        
+        if msg.clickedButton() == single_btn:
+            self.upload_bulk_trf_single_pdf()
+        elif msg.clickedButton() == multiple_btn:
+            self.upload_bulk_trf_multiple_files()
+    
+    def upload_bulk_trf_single_pdf(self):
+        """Upload a single multi-page PDF containing all TRFs"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Bulk TRF PDF (Multi-Page)",
+            "",
+            "PDF Files (*.pdf)"
+        )
+        
+        if not file_path:
+            return
+        
+        if not PDFPLUMBER_AVAILABLE:
+            QMessageBox.warning(self, "Error", "PDF processing requires pdfplumber. Install: pip install pdfplumber")
+            return
+        
+        # Count pages in PDF
+        try:
+            with pdfplumber.open(file_path) as pdf:
+                num_pages = len(pdf.pages)
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to open PDF: {str(e)}")
+            return
+        
+        if num_pages == 0:
+            QMessageBox.warning(self, "Error", "PDF has no pages")
+            return
+        
+        # Store the bulk PDF info
+        self.bulk_trf_pdf_path = file_path
+        self.bulk_trf_pdf_pages = num_pages
+        self.bulk_trf_files = []  # Clear individual files
+        self.bulk_trf_is_single_pdf = True
+        
+        self.bulk_trf_label.setText(f"📄 {os.path.basename(file_path)} ({num_pages} pages)")
+        self.bulk_trf_label.setStyleSheet("color: #28a745; font-weight: bold;")
+        self.bulk_trf_verify_all_btn.setEnabled(True)
+        
+        self.bulk_trf_status.setHtml(
+            f"<b>Bulk TRF PDF loaded:</b><br>"
+            f"📄 {os.path.basename(file_path)}<br>"
+            f"📑 {num_pages} pages detected<br><br>"
+            f"<i>Click 'Verify All' to auto-match pages to patients,<br>"
+            f"or use 'TRF Manager' for manual page assignment.</i>"
+        )
+    
+    def upload_bulk_trf_multiple_files(self):
+        """Upload multiple individual TRF files"""
         file_paths, _ = QFileDialog.getOpenFileNames(
             self,
             "Select Multiple TRF Documents",
@@ -2691,11 +2756,13 @@ Use null for fields not found. Return ONLY valid JSON."""
         
         if file_paths:
             self.bulk_trf_files = file_paths
+            self.bulk_trf_is_single_pdf = False
+            self.bulk_trf_pdf_path = None
+            
             self.bulk_trf_label.setText(f"{len(file_paths)} TRF files selected")
             self.bulk_trf_label.setStyleSheet("color: #28a745; font-weight: bold;")
             self.bulk_trf_verify_all_btn.setEnabled(True)
             
-            # Show file list
             file_names = [os.path.basename(f) for f in file_paths]
             self.bulk_trf_status.setHtml(
                 f"<b>Selected TRF files ({len(file_paths)}):</b><br>" +
@@ -2703,7 +2770,231 @@ Use null for fields not found. Return ONLY valid JSON."""
                 (f"<br><i>... and {len(file_paths) - 10} more</i>" if len(file_paths) > 10 else "")
             )
     
+    def extract_page_from_bulk_pdf(self, page_number):
+        """Extract a single page from the bulk TRF PDF and return as image bytes"""
+        if not hasattr(self, 'bulk_trf_pdf_path') or not self.bulk_trf_pdf_path:
+            return None, "No bulk PDF loaded"
+        
+        try:
+            with pdfplumber.open(self.bulk_trf_pdf_path) as pdf:
+                if page_number < 0 or page_number >= len(pdf.pages):
+                    return None, f"Page {page_number + 1} out of range"
+                
+                page = pdf.pages[page_number]
+                
+                # Convert to image for OCR
+                img = page.to_image(resolution=200)
+                import io
+                img_buffer = io.BytesIO()
+                img.save(img_buffer, format='PNG')
+                img_buffer.seek(0)
+                
+                return img_buffer.getvalue(), None
+        except Exception as e:
+            return None, f"Error extracting page: {str(e)}"
+    
+    def extract_text_from_bulk_pdf_page(self, page_number):
+        """Extract text from a specific page of the bulk TRF PDF"""
+        if not hasattr(self, 'bulk_trf_pdf_path') or not self.bulk_trf_pdf_path:
+            return None, "No bulk PDF loaded"
+        
+        try:
+            with pdfplumber.open(self.bulk_trf_pdf_path) as pdf:
+                if page_number < 0 or page_number >= len(pdf.pages):
+                    return None, f"Page {page_number + 1} out of range"
+                
+                page = pdf.pages[page_number]
+                
+                # Try direct text extraction first
+                text = page.extract_text()
+                
+                if text and len(text.strip()) > 20:
+                    return text, None
+                
+                # Fallback to OCR
+                extraction_method = self.settings.value('trf_extraction_method', 'easyocr')
+                
+                if extraction_method == 'easyocr' and EASYOCR_AVAILABLE:
+                    img = page.to_image(resolution=200)
+                    import io
+                    img_buffer = io.BytesIO()
+                    img.save(img_buffer, format='PNG')
+                    img_buffer.seek(0)
+                    
+                    reader = self.init_easyocr_reader()
+                    if reader:
+                        results = reader.readtext(img_buffer.getvalue())
+                        text_lines = [item[1] for item in results]
+                        return '\n'.join(text_lines), None
+                
+                # Try Tesseract
+                if TESSERACT_AVAILABLE:
+                    img = page.to_image(resolution=200)
+                    import io
+                    img_buffer = io.BytesIO()
+                    img.save(img_buffer, format='PNG')
+                    img_buffer.seek(0)
+                    
+                    pil_img = Image.open(img_buffer)
+                    text = pytesseract.image_to_string(pil_img)
+                    return text, None
+                
+                return text or "", None
+                
+        except Exception as e:
+            return None, f"Error extracting text: {str(e)}"
+    
     def verify_all_bulk_trf(self):
+        """Verify all uploaded TRFs against all patients in the batch"""
+        # Check if we have bulk PDF or individual files
+        is_single_pdf = getattr(self, 'bulk_trf_is_single_pdf', False)
+        
+        if is_single_pdf:
+            if not hasattr(self, 'bulk_trf_pdf_path') or not self.bulk_trf_pdf_path:
+                QMessageBox.warning(self, "No TRF", "Please upload a bulk TRF PDF first.")
+                return
+        else:
+            if not hasattr(self, 'bulk_trf_files') or not self.bulk_trf_files:
+                QMessageBox.warning(self, "No TRFs", "Please upload TRF files first.")
+                return
+        
+        if not hasattr(self, 'batch_patients_data') or not self.batch_patients_data:
+            QMessageBox.warning(self, "No Patients", "Please load patient data first using an Excel file.")
+            return
+        
+        if is_single_pdf:
+            self.verify_bulk_trf_single_pdf()
+        else:
+            self.verify_bulk_trf_multiple_files()
+    
+    def verify_bulk_trf_single_pdf(self):
+        """Verify all pages in bulk TRF PDF against patients"""
+        num_pages = getattr(self, 'bulk_trf_pdf_pages', 0)
+        if num_pages == 0:
+            return
+        
+        # Show progress dialog
+        progress_dialog = QDialog(self)
+        progress_dialog.setWindowTitle("Bulk TRF Verification (Multi-Page PDF)")
+        progress_dialog.setMinimumWidth(600)
+        progress_layout = QVBoxLayout()
+        progress_dialog.setLayout(progress_layout)
+        
+        status_label = QLabel(f"🔄 Processing {num_pages} pages from bulk TRF...")
+        status_label.setStyleSheet("font-size: 14px; padding: 10px;")
+        progress_layout.addWidget(status_label)
+        
+        progress_bar = QProgressBar()
+        progress_bar.setMaximum(num_pages)
+        progress_layout.addWidget(progress_bar)
+        
+        results_text = QTextBrowser()
+        results_text.setMinimumHeight(350)
+        progress_layout.addWidget(results_text)
+        
+        close_btn = QPushButton("Close")
+        close_btn.setEnabled(False)
+        close_btn.clicked.connect(progress_dialog.accept)
+        progress_layout.addWidget(close_btn)
+        
+        progress_dialog.show()
+        QApplication.processEvents()
+        
+        # Get patient list for matching
+        patients_list = list(self.batch_patients_data.items())
+        matched_count = 0
+        unmatched_pages = []
+        page_patient_matches = {}
+        
+        results_text.append(f"<b>Processing {num_pages} pages, {len(patients_list)} patients...</b><br>")
+        
+        for page_idx in range(num_pages):
+            status_label.setText(f"🔄 Processing page {page_idx + 1}/{num_pages}...")
+            progress_bar.setValue(page_idx + 1)
+            QApplication.processEvents()
+            
+            # Extract text from this page
+            page_text, error = self.extract_text_from_bulk_pdf_page(page_idx)
+            
+            if error or not page_text:
+                unmatched_pages.append((page_idx + 1, error or "No text extracted"))
+                results_text.append(f"⚠️ Page {page_idx + 1}: {error or 'No text extracted'}")
+                continue
+            
+            # Try to match with a patient
+            best_match = None
+            best_score = 0
+            
+            for patient_name, patient_data in patients_list:
+                p_info = patient_data.get('patient_info', {})
+                p_name = p_info.get('patient_name', '')
+                p_pin = p_info.get('pin', '')
+                
+                score = 0
+                
+                if p_name:
+                    found, _ = self.find_in_text(page_text, p_name)
+                    if found:
+                        score += 60
+                
+                if p_pin:
+                    found, _ = self.find_in_text(page_text, p_pin)
+                    if found:
+                        score += 40
+                
+                if score > best_score:
+                    best_score = score
+                    best_match = (patient_name, patient_data)
+            
+            if best_match and best_score >= 50:
+                matched_count += 1
+                patient_name, patient_data = best_match
+                
+                # Store page-patient mapping
+                page_patient_matches[page_idx] = patient_name
+                
+                # Store TRF association
+                if not hasattr(self, 'patient_trf_mapping'):
+                    self.patient_trf_mapping = {}
+                
+                self.patient_trf_mapping[patient_name] = {
+                    'trf_path': self.bulk_trf_pdf_path,
+                    'trf_page': page_idx,
+                    'trf_data': None,
+                    'match_score': best_score,
+                    'is_bulk_pdf': True
+                }
+                
+                results_text.append(f"✅ Page {page_idx + 1} → <b>{patient_name}</b> ({int(best_score)}%)")
+            else:
+                unmatched_pages.append((page_idx + 1, f"Best score: {int(best_score)}%"))
+                results_text.append(f"⚠️ Page {page_idx + 1} - No match (best: {int(best_score)}%)")
+            
+            QApplication.processEvents()
+        
+        # Summary
+        status_label.setText("✅ Bulk TRF verification complete!")
+        results_text.append(f"\n<hr><b>Summary:</b>")
+        results_text.append(f"• Total pages: {num_pages}")
+        results_text.append(f"• Matched: {matched_count}")
+        results_text.append(f"• Unmatched: {len(unmatched_pages)}")
+        
+        if unmatched_pages:
+            results_text.append(f"\n<b>Unmatched pages:</b>")
+            for page_num, reason in unmatched_pages[:10]:
+                results_text.append(f"  • Page {page_num}: {reason}")
+            if len(unmatched_pages) > 10:
+                results_text.append(f"  ... and {len(unmatched_pages) - 10} more")
+        
+        close_btn.setEnabled(True)
+        
+        # Update status
+        self.bulk_trf_status.setHtml(
+            f"<span style='color:#28a745;'>✅ Processed {num_pages} pages: "
+            f"{matched_count} matched, {len(unmatched_pages)} unmatched</span>"
+        )
+    
+    def verify_bulk_trf_multiple_files(self):
         """Verify all uploaded TRFs against all patients in the batch"""
         if not hasattr(self, 'bulk_trf_files') or not self.bulk_trf_files:
             QMessageBox.warning(self, "No TRFs", "Please upload TRF files first.")
@@ -3132,7 +3423,14 @@ Use null for fields not found. Return ONLY valid JSON."""
         trf_mapping = getattr(self, 'patient_trf_mapping', {})
         if patient_key in trf_mapping:
             trf_info = trf_mapping[patient_key]
-            html += f"<hr><p style='color:#28a745;'><b>✅ TRF Linked:</b> {os.path.basename(trf_info['trf_path'])}</p>"
+            
+            # Check if it's from bulk PDF
+            if trf_info.get('is_bulk_pdf'):
+                page_num = trf_info.get('trf_page', 0) + 1
+                html += f"<hr><p style='color:#28a745;'><b>✅ TRF Linked:</b> {os.path.basename(trf_info['trf_path'])} (Page {page_num})</p>"
+            else:
+                html += f"<hr><p style='color:#28a745;'><b>✅ TRF Linked:</b> {os.path.basename(trf_info['trf_path'])}</p>"
+            
             html += f"<p><b>Match Score:</b> {int(trf_info.get('match_score', 0))}%</p>"
             
             if trf_info.get('trf_data'):
@@ -3143,11 +3441,16 @@ Use null for fields not found. Return ONLY valid JSON."""
                 html += "</ul>"
         else:
             html += "<hr><p style='color:#6c757d;'><i>No TRF linked to this patient</i></p>"
+            
+            # Show option to assign page from bulk PDF if available
+            if hasattr(self, 'bulk_trf_pdf_path') and self.bulk_trf_pdf_path:
+                num_pages = getattr(self, 'bulk_trf_pdf_pages', 0)
+                html += f"<p style='color:#007bff;'><i>💡 Bulk TRF loaded ({num_pages} pages). Use 'Assign Page' to link.</i></p>"
         
         self.trf_details_text.setHtml(html)
     
     def upload_trf_for_selected_patient(self):
-        """Upload TRF for the selected patient"""
+        """Upload TRF for the selected patient - supports individual file or page from bulk PDF"""
         selected = self.trf_patient_list.selectedItems()
         if not selected:
             QMessageBox.warning(self, "No Selection", "Please select a patient first.")
@@ -3156,6 +3459,25 @@ Use null for fields not found. Return ONLY valid JSON."""
         row = selected[0].row()
         patient_key = self.trf_patient_list.item(row, 0).data(Qt.ItemDataRole.UserRole)
         
+        # Check if bulk PDF is loaded - offer choice
+        if hasattr(self, 'bulk_trf_pdf_path') and self.bulk_trf_pdf_path:
+            msg = QMessageBox(self)
+            msg.setWindowTitle("TRF Source")
+            msg.setText(f"How would you like to assign TRF for {patient_key}?")
+            
+            page_btn = msg.addButton(f"📑 Select Page from Bulk PDF", QMessageBox.ButtonRole.ActionRole)
+            file_btn = msg.addButton("📄 Upload Individual File", QMessageBox.ButtonRole.ActionRole)
+            cancel_btn = msg.addButton(QMessageBox.StandardButton.Cancel)
+            
+            msg.exec()
+            
+            if msg.clickedButton() == page_btn:
+                self.assign_bulk_pdf_page_to_patient(patient_key, row)
+                return
+            elif msg.clickedButton() == cancel_btn:
+                return
+        
+        # Upload individual file
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             f"Select TRF for {patient_key}",
@@ -3170,7 +3492,8 @@ Use null for fields not found. Return ONLY valid JSON."""
             self.patient_trf_mapping[patient_key] = {
                 'trf_path': file_path,
                 'trf_data': None,
-                'match_score': 100  # Manual upload = 100%
+                'match_score': 100,  # Manual upload = 100%
+                'is_bulk_pdf': False
             }
             
             # Update list
@@ -3180,6 +3503,90 @@ Use null for fields not found. Return ONLY valid JSON."""
             self.trf_patient_list.selectRow(row)
             
             self.statusBar().showMessage(f"TRF linked to {patient_key}")
+    
+    def assign_bulk_pdf_page_to_patient(self, patient_key, row):
+        """Assign a specific page from bulk PDF to a patient"""
+        if not hasattr(self, 'bulk_trf_pdf_path') or not self.bulk_trf_pdf_path:
+            QMessageBox.warning(self, "Error", "No bulk PDF loaded")
+            return
+        
+        num_pages = getattr(self, 'bulk_trf_pdf_pages', 0)
+        
+        # Create page selection dialog
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Assign Page to {patient_key}")
+        dialog.setMinimumWidth(400)
+        layout = QVBoxLayout()
+        dialog.setLayout(layout)
+        
+        layout.addWidget(QLabel(f"<b>Select page from:</b> {os.path.basename(self.bulk_trf_pdf_path)}"))
+        layout.addWidget(QLabel(f"Total pages: {num_pages}"))
+        
+        # Page selection
+        page_layout = QHBoxLayout()
+        page_layout.addWidget(QLabel("Page:"))
+        page_spin = QSpinBox()
+        page_spin.setMinimum(1)
+        page_spin.setMaximum(num_pages)
+        page_spin.setValue(1)
+        page_layout.addWidget(page_spin)
+        page_layout.addStretch()
+        layout.addLayout(page_layout)
+        
+        # Preview area
+        preview_label = QLabel("Page preview will appear here...")
+        preview_label.setMinimumHeight(200)
+        preview_label.setStyleSheet("border: 1px solid #ccc; padding: 10px;")
+        preview_label.setWordWrap(True)
+        layout.addWidget(preview_label)
+        
+        def update_preview():
+            page_num = page_spin.value() - 1
+            text, error = self.extract_text_from_bulk_pdf_page(page_num)
+            if text:
+                preview_label.setText(text[:500] + "..." if len(text) > 500 else text)
+            else:
+                preview_label.setText(f"Error: {error}" if error else "No text extracted")
+        
+        page_spin.valueChanged.connect(update_preview)
+        update_preview()  # Initial preview
+        
+        # Buttons
+        btn_layout = QHBoxLayout()
+        assign_btn = QPushButton("✓ Assign Page")
+        assign_btn.setStyleSheet("background-color: #28a745; color: white; padding: 8px 16px;")
+        cancel_btn = QPushButton("Cancel")
+        
+        btn_layout.addStretch()
+        btn_layout.addWidget(cancel_btn)
+        btn_layout.addWidget(assign_btn)
+        layout.addLayout(btn_layout)
+        
+        def do_assign():
+            page_num = page_spin.value() - 1
+            
+            if not hasattr(self, 'patient_trf_mapping'):
+                self.patient_trf_mapping = {}
+            
+            self.patient_trf_mapping[patient_key] = {
+                'trf_path': self.bulk_trf_pdf_path,
+                'trf_page': page_num,
+                'trf_data': None,
+                'match_score': 100,  # Manual assignment = 100%
+                'is_bulk_pdf': True
+            }
+            
+            dialog.accept()
+            
+            # Update list
+            self.populate_trf_patient_list()
+            self.trf_patient_list.selectRow(row)
+            self.statusBar().showMessage(f"Page {page_num + 1} assigned to {patient_key}")
+        
+        assign_btn.clicked.connect(do_assign)
+        cancel_btn.clicked.connect(dialog.reject)
+        
+        dialog.exec()
     
     def verify_selected_patient_trf(self):
         """Verify TRF for the selected patient"""
@@ -3212,19 +3619,100 @@ Use null for fields not found. Return ONLY valid JSON."""
         
         use_ai = self.use_ai_checkbox.isChecked() if hasattr(self, 'use_ai_checkbox') else False
         
-        # Verify
-        results, all_correct, has_suggestions, error = self.verify_with_ai(
-            trf_info['trf_path'], 
-            comparison_data,
-            use_ai=use_ai
-        )
-        
-        if error:
-            QMessageBox.warning(self, "Error", error)
-            return
+        # Check if this is from bulk PDF
+        if trf_info.get('is_bulk_pdf'):
+            page_num = trf_info.get('trf_page', 0)
+            
+            # Extract text from specific page
+            raw_text, error = self.extract_text_from_bulk_pdf_page(page_num)
+            
+            if error:
+                QMessageBox.warning(self, "Extraction Error", f"Could not extract text from page {page_num + 1}: {error}")
+                return
+            
+            # Parse extracted text
+            trf_data = self.parse_extracted_trf_text(raw_text)
+            
+            # Compare and generate results
+            results = self.compare_trf_to_patient(trf_data, comparison_data)
+            all_correct = all(r['status'] in ['ok', 'skip'] for r in results)
+            has_suggestions = any(r['can_apply'] for r in results)
+            
+        else:
+            # Standard file verification
+            results, all_correct, has_suggestions, error = self.verify_with_ai(
+                trf_info['trf_path'], 
+                comparison_data,
+                use_ai=use_ai
+            )
+            
+            if error:
+                QMessageBox.warning(self, "Error", error)
+                return
         
         # Show comparison dialog (modified for bulk context)
         self.show_bulk_trf_comparison_dialog(results, patient_key)
+    
+    def compare_trf_to_patient(self, trf_data, patient_data):
+        """Compare TRF extracted data to patient data and return comparison results"""
+        from difflib import SequenceMatcher
+        
+        def fuzzy_match(s1, s2):
+            if not s1 or not s2:
+                return 0.0
+            return SequenceMatcher(None, s1.lower(), s2.lower()).ratio()
+        
+        results = []
+        field_mapping = {
+            'patient_name': 'Patient Name',
+            'hospital_clinic': 'Hospital/Clinic',
+            'pin': 'PIN',
+            'biopsy_date': 'Biopsy Date',
+            'sample_receipt_date': 'Sample Receipt Date',
+            'referring_clinician': 'Referring Clinician',
+        }
+        
+        for field_key, field_name in field_mapping.items():
+            entered_value = patient_data.get(field_key, '') or ''
+            trf_value = trf_data.get(field_key, '') or ''
+            
+            if not trf_value:
+                trf_value = '(not found)'
+            
+            if not entered_value:
+                status = 'suggestion' if trf_value != '(not found)' else 'skip'
+                message = 'Value found in TRF' if trf_value != '(not found)' else 'No data'
+                can_apply = trf_value != '(not found)'
+            elif entered_value.lower() == trf_value.lower():
+                status = 'ok'
+                message = '✓ Match'
+                can_apply = False
+            elif trf_value == '(not found)':
+                status = 'warning'
+                message = 'Not found in TRF'
+                can_apply = False
+            else:
+                score = fuzzy_match(entered_value, trf_value)
+                if score >= 0.85:
+                    status = 'ok'
+                    message = f'✓ Similar ({int(score*100)}%)'
+                    can_apply = False
+                else:
+                    status = 'mismatch'
+                    message = f'⚠ Different ({int(score*100)}% match)'
+                    can_apply = True
+            
+            results.append({
+                'field': field_name,
+                'field_key': field_key,
+                'entered': entered_value,
+                'trf_value': trf_value,
+                'status': status,
+                'message': message,
+                'can_apply': can_apply
+            })
+        
+        return results
     
     def show_bulk_trf_comparison_dialog(self, results, patient_key):
         """Show TRF comparison dialog for bulk verification"""
