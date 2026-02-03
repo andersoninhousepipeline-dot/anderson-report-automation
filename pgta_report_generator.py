@@ -45,6 +45,25 @@ import pandas as pd
 from pgta_template import PGTAReportTemplate
 from pgta_docx_generator import PGTADocxGenerator
 
+# TRF Verification imports
+try:
+    import pytesseract
+    from PIL import Image
+    TESSERACT_AVAILABLE = True
+except ImportError:
+    TESSERACT_AVAILABLE = False
+    print("Warning: pytesseract not found. TRF image verification may not work.")
+
+try:
+    import pdfplumber
+    PDFPLUMBER_AVAILABLE = True
+except ImportError:
+    PDFPLUMBER_AVAILABLE = False
+    print("Warning: pdfplumber not found. TRF PDF verification may not work.")
+
+import re
+from difflib import SequenceMatcher
+
 class ClickOnlyComboBox(QComboBox):
     """Subclass of QComboBox that ignores mouse wheel events to prevent accidental changes when scrolling."""
     def wheelEvent(self, event):
@@ -407,6 +426,38 @@ class PGTAReportGeneratorApp(QMainWindow):
         patient_form.addRow("Biopsy Performed By:", self.biopsy_performed_by_input)
         patient_form.addRow("Report Date:", self.report_date_input)
         patient_form.addRow("Indication:", self.indication_input)
+        
+        # --- TRF Verification Section ---
+        trf_group = QGroupBox("TRF Verification (Optional)")
+        trf_layout = QVBoxLayout()
+        trf_group.setLayout(trf_layout)
+        scroll_layout.addWidget(trf_group)
+        
+        trf_upload_layout = QHBoxLayout()
+        self.trf_path_label = QLabel("No TRF uploaded")
+        self.trf_path_label.setStyleSheet("color: #666; font-style: italic;")
+        trf_upload_layout.addWidget(self.trf_path_label, 1)
+        
+        self.trf_upload_btn = QPushButton("📄 Upload TRF")
+        self.trf_upload_btn.clicked.connect(self.upload_trf_manual)
+        trf_upload_layout.addWidget(self.trf_upload_btn)
+        
+        self.trf_verify_btn = QPushButton("✓ Verify")
+        self.trf_verify_btn.clicked.connect(self.verify_trf_manual)
+        self.trf_verify_btn.setEnabled(False)
+        trf_upload_layout.addWidget(self.trf_verify_btn)
+        
+        trf_layout.addLayout(trf_upload_layout)
+        
+        # Verification result display
+        self.trf_result_text = QTextBrowser()
+        self.trf_result_text.setMaximumHeight(120)
+        self.trf_result_text.setStyleSheet("background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 4px;")
+        self.trf_result_text.setHtml("<i style='color:#888;'>Upload a TRF (image or PDF) to verify patient details</i>")
+        trf_layout.addWidget(self.trf_result_text)
+        
+        # Store TRF path
+        self.manual_trf_path = None
         
         # --- Page 1 Summary Section ---
         summary_group = QGroupBox("Page 1: Results Summary")
@@ -1744,6 +1795,274 @@ class PGTAReportGeneratorApp(QMainWindow):
                     inputs['status'].setCurrentText(chr_statuses.get(s_i, 'N'))
                     inputs['mosaic'].setText(mosaic_data.get(s_i, ''))
     
+    # ==================== TRF Verification Methods ====================
+    
+    def extract_text_from_trf(self, file_path):
+        """Extract text from TRF file (image or PDF)"""
+        text = ""
+        file_ext = os.path.splitext(file_path)[1].lower()
+        
+        try:
+            if file_ext in ['.pdf']:
+                # Extract text from PDF
+                if PDFPLUMBER_AVAILABLE:
+                    with pdfplumber.open(file_path) as pdf:
+                        for page in pdf.pages:
+                            page_text = page.extract_text()
+                            if page_text:
+                                text += page_text + "\n"
+                else:
+                    return None, "PDF extraction requires pdfplumber. Please install it."
+                    
+            elif file_ext in ['.png', '.jpg', '.jpeg', '.tiff', '.bmp']:
+                # Extract text from image using OCR
+                if TESSERACT_AVAILABLE:
+                    img = Image.open(file_path)
+                    text = pytesseract.image_to_string(img)
+                else:
+                    return None, "Image OCR requires pytesseract. Please install it."
+            else:
+                return None, f"Unsupported file format: {file_ext}"
+                
+        except Exception as e:
+            return None, f"Error extracting text: {str(e)}"
+        
+        return text, None
+    
+    def fuzzy_match(self, str1, str2, threshold=0.7):
+        """Check if two strings are similar using fuzzy matching"""
+        if not str1 or not str2:
+            return False, 0.0
+        str1 = str(str1).lower().strip()
+        str2 = str(str2).lower().strip()
+        ratio = SequenceMatcher(None, str1, str2).ratio()
+        return ratio >= threshold, ratio
+    
+    def find_in_text(self, text, search_term, context_words=3):
+        """Find a term in text and return if found with context"""
+        if not text or not search_term:
+            return False, ""
+        
+        text_lower = text.lower()
+        search_lower = str(search_term).lower().strip()
+        
+        # Direct match
+        if search_lower in text_lower:
+            return True, "exact match"
+        
+        # Word-by-word fuzzy match for names
+        search_words = search_lower.split()
+        text_words = text_lower.split()
+        
+        matched_words = 0
+        for sw in search_words:
+            for tw in text_words:
+                is_match, ratio = self.fuzzy_match(sw, tw, 0.8)
+                if is_match:
+                    matched_words += 1
+                    break
+        
+        if len(search_words) > 0 and matched_words / len(search_words) >= 0.6:
+            return True, f"fuzzy match ({matched_words}/{len(search_words)} words)"
+        
+        return False, "not found"
+    
+    def verify_patient_data(self, trf_text, patient_data):
+        """Verify patient data against TRF text and return results"""
+        results = []
+        all_correct = True
+        
+        fields_to_check = [
+            ('patient_name', 'Patient Name'),
+            ('hospital_clinic', 'Hospital/Clinic'),
+            ('pin', 'PIN/Sample ID'),
+            ('biopsy_date', 'Biopsy Date'),
+            ('sample_receipt_date', 'Sample Receipt Date'),
+        ]
+        
+        for field_key, field_label in fields_to_check:
+            value = patient_data.get(field_key, '')
+            if not value or value.lower() in ['nan', 'none', '']:
+                results.append({
+                    'field': field_label,
+                    'status': 'skip',
+                    'message': 'No data entered',
+                    'icon': '⚪'
+                })
+                continue
+            
+            found, context = self.find_in_text(trf_text, value)
+            
+            if found:
+                results.append({
+                    'field': field_label,
+                    'status': 'ok',
+                    'message': f'Found ({context})',
+                    'icon': '✅'
+                })
+            else:
+                all_correct = False
+                # Try to find similar text in TRF
+                suggestion = self.find_similar_in_trf(trf_text, field_key, value)
+                results.append({
+                    'field': field_label,
+                    'status': 'warning',
+                    'message': f'Not found in TRF. Entered: "{value}"' + (f' | Suggestion: "{suggestion}"' if suggestion else ''),
+                    'icon': '⚠️'
+                })
+        
+        return results, all_correct
+    
+    def find_similar_in_trf(self, trf_text, field_key, entered_value):
+        """Try to find what might be the correct value in TRF"""
+        if not trf_text:
+            return None
+        
+        lines = trf_text.split('\n')
+        
+        # Field-specific patterns
+        patterns = {
+            'patient_name': [r'name[:\s]*([A-Za-z\s\.]+)', r'patient[:\s]*([A-Za-z\s\.]+)'],
+            'hospital_clinic': [r'hospital[:\s]*(.+)', r'clinic[:\s]*(.+)', r'center[:\s]*(.+)'],
+            'pin': [r'pin[:\s]*(\S+)', r'sample\s*id[:\s]*(\S+)', r'id[:\s]*(\S+)'],
+            'biopsy_date': [r'biopsy\s*date[:\s]*(\S+)', r'date\s*of\s*biopsy[:\s]*(\S+)'],
+            'sample_receipt_date': [r'receipt\s*date[:\s]*(\S+)', r'received[:\s]*(\S+)'],
+        }
+        
+        if field_key in patterns:
+            for pattern in patterns[field_key]:
+                for line in lines:
+                    match = re.search(pattern, line, re.IGNORECASE)
+                    if match:
+                        return match.group(1).strip()
+        
+        return None
+    
+    def format_verification_result(self, results, all_correct):
+        """Format verification results as HTML"""
+        if all_correct:
+            html = "<div style='padding:10px;'>"
+            html += "<h4 style='color:#28a745; margin:0 0 10px 0;'>✅ All Verified Fields Match!</h4>"
+        else:
+            html = "<div style='padding:10px;'>"
+            html += "<h4 style='color:#dc3545; margin:0 0 10px 0;'>⚠️ Some Fields Need Attention</h4>"
+        
+        html += "<table style='width:100%; font-size:12px;'>"
+        for r in results:
+            color = '#28a745' if r['status'] == 'ok' else '#ffc107' if r['status'] == 'warning' else '#6c757d'
+            html += f"<tr><td style='padding:3px;'>{r['icon']} <b>{r['field']}</b></td>"
+            html += f"<td style='padding:3px; color:{color};'>{r['message']}</td></tr>"
+        html += "</table></div>"
+        
+        return html
+    
+    def upload_trf_manual(self):
+        """Upload TRF for manual entry verification"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select TRF Document",
+            "",
+            "TRF Files (*.pdf *.png *.jpg *.jpeg *.tiff *.bmp);;PDF Files (*.pdf);;Image Files (*.png *.jpg *.jpeg *.tiff *.bmp)"
+        )
+        
+        if file_path:
+            self.manual_trf_path = file_path
+            self.trf_path_label.setText(os.path.basename(file_path))
+            self.trf_path_label.setStyleSheet("color: #28a745; font-weight: bold;")
+            self.trf_verify_btn.setEnabled(True)
+            self.trf_result_text.setHtml("<i style='color:#007bff;'>TRF uploaded. Click 'Verify' to check patient details.</i>")
+    
+    def verify_trf_manual(self):
+        """Verify manual entry data against uploaded TRF"""
+        if not self.manual_trf_path:
+            QMessageBox.warning(self, "No TRF", "Please upload a TRF document first.")
+            return
+        
+        # Show processing
+        self.trf_result_text.setHtml("<i style='color:#007bff;'>🔄 Extracting text from TRF...</i>")
+        QApplication.processEvents()
+        
+        # Extract text from TRF
+        trf_text, error = self.extract_text_from_trf(self.manual_trf_path)
+        
+        if error:
+            self.trf_result_text.setHtml(f"<span style='color:#dc3545;'>❌ {error}</span>")
+            return
+        
+        if not trf_text or len(trf_text.strip()) < 10:
+            self.trf_result_text.setHtml("<span style='color:#dc3545;'>❌ Could not extract readable text from TRF. Try a clearer image or PDF.</span>")
+            return
+        
+        # Get current patient data
+        patient_data = {
+            'patient_name': self.patient_name_input.toPlainText().strip(),
+            'hospital_clinic': self.hospital_clinic_input.toPlainText().strip(),
+            'pin': self.pin_input.toPlainText().strip(),
+            'biopsy_date': self.biopsy_date_input.text().strip(),
+            'sample_receipt_date': self.sample_receipt_date_input.text().strip(),
+        }
+        
+        # Verify
+        results, all_correct = self.verify_patient_data(trf_text, patient_data)
+        
+        # Display results
+        html = self.format_verification_result(results, all_correct)
+        self.trf_result_text.setHtml(html)
+    
+    def upload_trf_batch(self):
+        """Upload TRF for batch entry verification"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select TRF Document",
+            "",
+            "TRF Files (*.pdf *.png *.jpg *.jpeg *.tiff *.bmp);;PDF Files (*.pdf);;Image Files (*.png *.jpg *.jpeg *.tiff *.bmp)"
+        )
+        
+        if file_path:
+            self.batch_trf_path = file_path
+            self.batch_trf_path_label.setText(os.path.basename(file_path))
+            self.batch_trf_path_label.setStyleSheet("color: #28a745; font-weight: bold;")
+            self.batch_trf_result_text.setHtml("<i style='color:#007bff;'>TRF uploaded. Click 'Verify' to check patient details.</i>")
+    
+    def verify_trf_batch(self):
+        """Verify batch entry data against uploaded TRF"""
+        if not hasattr(self, 'batch_trf_path') or not self.batch_trf_path:
+            QMessageBox.warning(self, "No TRF", "Please upload a TRF document first.")
+            return
+        
+        # Show processing
+        self.batch_trf_result_text.setHtml("<i style='color:#007bff;'>🔄 Extracting text from TRF...</i>")
+        QApplication.processEvents()
+        
+        # Extract text from TRF
+        trf_text, error = self.extract_text_from_trf(self.batch_trf_path)
+        
+        if error:
+            self.batch_trf_result_text.setHtml(f"<span style='color:#dc3545;'>❌ {error}</span>")
+            return
+        
+        if not trf_text or len(trf_text.strip()) < 10:
+            self.batch_trf_result_text.setHtml("<span style='color:#dc3545;'>❌ Could not extract readable text from TRF. Try a clearer image or PDF.</span>")
+            return
+        
+        # Get current batch patient data
+        patient_data = {
+            'patient_name': self.batch_patient_name.toPlainText().strip(),
+            'hospital_clinic': self.batch_hospital.toPlainText().strip(),
+            'pin': self.batch_pin.toPlainText().strip(),
+            'biopsy_date': self.batch_biopsy_date.text().strip(),
+            'sample_receipt_date': self.batch_sample_receipt_date.text().strip(),
+        }
+        
+        # Verify
+        results, all_correct = self.verify_patient_data(trf_text, patient_data)
+        
+        # Display results
+        html = self.format_verification_result(results, all_correct)
+        self.batch_trf_result_text.setHtml(html)
+    
+    # ==================== End TRF Verification Methods ====================
+    
     def clear_manual_form(self):
         """Clear all manual entry fields"""
         reply = QMessageBox.question(
@@ -2330,6 +2649,38 @@ class PGTAReportGeneratorApp(QMainWindow):
         patient_form.addRow("Biopsy Performed By:", self.batch_biopsy_performed_by)
         patient_form.addRow("Report Date:", self.batch_report_date)
         patient_form.addRow("Indication:", self.batch_indication)
+        
+        # --- TRF Verification Section for Batch ---
+        trf_group = QGroupBox("TRF Verification")
+        trf_layout = QVBoxLayout()
+        trf_group.setLayout(trf_layout)
+        
+        trf_upload_layout = QHBoxLayout()
+        self.batch_trf_path_label = QLabel("No TRF uploaded")
+        self.batch_trf_path_label.setStyleSheet("color: #666; font-style: italic;")
+        trf_upload_layout.addWidget(self.batch_trf_path_label, 1)
+        
+        batch_trf_upload_btn = QPushButton("📄 Upload TRF")
+        batch_trf_upload_btn.clicked.connect(self.upload_trf_batch)
+        trf_upload_layout.addWidget(batch_trf_upload_btn)
+        
+        batch_trf_verify_btn = QPushButton("✓ Verify")
+        batch_trf_verify_btn.clicked.connect(self.verify_trf_batch)
+        trf_upload_layout.addWidget(batch_trf_verify_btn)
+        
+        trf_layout.addLayout(trf_upload_layout)
+        
+        # Verification result display for batch
+        self.batch_trf_result_text = QTextBrowser()
+        self.batch_trf_result_text.setMaximumHeight(120)
+        self.batch_trf_result_text.setStyleSheet("background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 4px;")
+        self.batch_trf_result_text.setHtml("<i style='color:#888;'>Upload a TRF to verify patient details</i>")
+        trf_layout.addWidget(self.batch_trf_result_text)
+        
+        patient_form.addRow("", trf_group)
+        
+        # Store batch TRF path
+        self.batch_trf_path = None
     
         self.batch_editor_layout.addWidget(patient_group)
     
