@@ -3506,6 +3506,10 @@ Use null for fields not found. Return ONLY valid JSON."""
         self.dialog_bulk_pdf_path = file_path
         self.dialog_bulk_pdf_pages = num_pages
         
+        # Also set the main bulk_trf_pdf_path so extraction methods work
+        self.bulk_trf_pdf_path = file_path
+        self.bulk_trf_is_single_pdf = True
+        
         # Update status label
         self.bulk_trf_status_label.setText(f"📄 {os.path.basename(file_path)} - {num_pages} pages loaded")
         self.bulk_trf_status_label.setStyleSheet("color: #28a745; font-weight: bold; padding: 5px;")
