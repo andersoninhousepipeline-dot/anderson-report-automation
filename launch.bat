@@ -35,9 +35,12 @@ call .venv\Scripts\activate.bat
 
 python -c "import PyQt6" >nul 2>&1
 if %errorlevel% neq 0 (
-    echo Installing packages...
+    echo Installing core packages...
     pip install --upgrade pip
-    pip install PyQt6 reportlab PyPDF2 pdfplumber python-docx pandas openpyxl pyarrow Pillow numpy requests easyocr
+    pip install PyQt6 reportlab PyPDF2 pdfplumber python-docx pandas openpyxl pyarrow Pillow numpy requests
+    echo.
+    echo Core packages installed. Starting app...
+    echo EasyOCR will be installed in background later.
 )
 
 echo.
