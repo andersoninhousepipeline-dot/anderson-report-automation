@@ -2388,12 +2388,75 @@ class PGTAReportGeneratorApp(QMainWindow):
                 self._easyocr_reader = None
         return self._easyocr_reader
     
+    def preprocess_image_for_ocr(self, image):
+        """Preprocess image for better OCR accuracy (mobile camera/scanner images)"""
+        from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+        
+        try:
+            # Convert to RGB if needed
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # 1. Auto-orient based on EXIF (mobile photos often have orientation data)
+            try:
+                image = ImageOps.exif_transpose(image)
+            except:
+                pass
+            
+            # 2. Convert to grayscale for better text detection
+            gray = image.convert('L')
+            
+            # 3. Increase contrast - helps with scanner/camera lighting issues
+            enhancer = ImageEnhance.Contrast(gray)
+            gray = enhancer.enhance(2.0)
+            
+            # 4. Increase sharpness - helps with slightly blurry camera photos
+            enhancer = ImageEnhance.Sharpness(gray)
+            gray = enhancer.enhance(2.0)
+            
+            # 5. Denoise using median filter (removes camera noise)
+            gray = gray.filter(ImageFilter.MedianFilter(size=1))
+            
+            # 6. Binarize (convert to black and white) using adaptive threshold
+            # This helps with uneven lighting from mobile cameras
+            import numpy as np
+            img_array = np.array(gray)
+            
+            # Simple adaptive thresholding
+            threshold = np.mean(img_array)
+            binary = ((img_array > threshold) * 255).astype(np.uint8)
+            
+            # Convert back to PIL Image
+            processed = Image.fromarray(binary)
+            
+            # 7. Scale up small images (OCR works better on larger text)
+            min_dimension = 1500
+            if processed.width < min_dimension or processed.height < min_dimension:
+                scale = max(min_dimension / processed.width, min_dimension / processed.height)
+                new_size = (int(processed.width * scale), int(processed.height * scale))
+                processed = processed.resize(new_size, Image.Resampling.LANCZOS)
+            
+            return processed.convert('RGB')  # EasyOCR needs RGB
+            
+        except Exception as e:
+            print(f"Image preprocessing warning: {e}")
+            return image  # Return original if preprocessing fails
+    
     def extract_text_with_easyocr(self, file_path):
-        """Extract text from image using EasyOCR (open-source, offline)"""
+        """Extract text from image using EasyOCR (open-source, offline)
+        
+        Optimized for:
+        - Mobile camera photos
+        - Document scanner apps
+        - Scanned PDFs
+        """
         if not EASYOCR_AVAILABLE:
             return None, "EasyOCR not available. Install: pip install easyocr"
         
         try:
+            from PIL import Image
+            import io
+            
             reader = self.init_easyocr_reader()
             if not reader:
                 return None, "Failed to initialize EasyOCR"
@@ -2407,27 +2470,58 @@ class PGTAReportGeneratorApp(QMainWindow):
                         if pdf.pages:
                             page = pdf.pages[0]
                             # Higher resolution = better OCR accuracy
-                            img = page.to_image(resolution=300)
-                            import io
+                            pil_img = page.to_image(resolution=300).original
+                            
+                            # Preprocess for better OCR
+                            processed_img = self.preprocess_image_for_ocr(pil_img)
+                            
                             img_buffer = io.BytesIO()
-                            img.save(img_buffer, format='PNG')
+                            processed_img.save(img_buffer, format='PNG')
                             img_buffer.seek(0)
-                            # EasyOCR can read from bytes
-                            results = reader.readtext(img_buffer.getvalue(), detail=1, paragraph=False)
+                            
+                            # EasyOCR with optimized settings
+                            results = reader.readtext(
+                                img_buffer.getvalue(), 
+                                detail=1, 
+                                paragraph=False,
+                                contrast_ths=0.1,  # Lower threshold for low contrast images
+                                adjust_contrast=0.5,  # Auto-adjust contrast
+                                text_threshold=0.6,  # Lower threshold for more text detection
+                                low_text=0.3,  # Better detection for small text
+                            )
                 else:
                     return None, "PDF processing requires pdfplumber"
             else:
-                results = reader.readtext(file_path, detail=1, paragraph=False)
+                # Load and preprocess image file
+                pil_img = Image.open(file_path)
+                processed_img = self.preprocess_image_for_ocr(pil_img)
+                
+                img_buffer = io.BytesIO()
+                processed_img.save(img_buffer, format='PNG')
+                img_buffer.seek(0)
+                
+                # EasyOCR with optimized settings for camera photos
+                results = reader.readtext(
+                    img_buffer.getvalue(),
+                    detail=1, 
+                    paragraph=False,
+                    contrast_ths=0.1,
+                    adjust_contrast=0.5,
+                    text_threshold=0.6,
+                    low_text=0.3,
+                )
             
             # Combine all detected text - sort by vertical position for better reading order
             # results format: [[bbox, text, confidence], ...]
             sorted_results = sorted(results, key=lambda x: (x[0][0][1], x[0][0][0]))  # Sort by Y then X
-            text_lines = [item[1] for item in sorted_results if item[2] > 0.3]  # Filter low confidence
+            text_lines = [item[1] for item in sorted_results if item[2] > 0.25]  # Lower threshold for mobile photos
             full_text = '\n'.join(text_lines)
             
             return full_text, None
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return None, f"EasyOCR error: {str(e)}"
     
     def extract_text_with_ollama(self, file_path):
@@ -3385,17 +3479,33 @@ Use null for fields not found. Return ONLY valid JSON."""
                     # First try direct text extraction (faster)
                     page_text = page.extract_text() or ""
                     
-                    # If no text, use OCR
+                    # If no text or insufficient text, use enhanced OCR with preprocessing
                     if len(page_text.strip()) < 50:
                         try:
+                            from PIL import Image
+                            import io
+                            
                             reader = self.init_easyocr_reader()
                             if reader:
-                                img = page.to_image(resolution=300)
-                                import io
+                                # Get page as image
+                                pil_img = page.to_image(resolution=300).original
+                                
+                                # Apply preprocessing for mobile/scanner images
+                                processed_img = self.preprocess_image_for_ocr(pil_img)
+                                
                                 img_buffer = io.BytesIO()
-                                img.save(img_buffer, format='PNG')
+                                processed_img.save(img_buffer, format='PNG')
                                 img_buffer.seek(0)
-                                ocr_results = reader.readtext(img_buffer.getvalue(), detail=0)
+                                
+                                # OCR with optimized settings
+                                ocr_results = reader.readtext(
+                                    img_buffer.getvalue(), 
+                                    detail=0,
+                                    contrast_ths=0.1,
+                                    adjust_contrast=0.5,
+                                    text_threshold=0.6,
+                                    low_text=0.3,
+                                )
                                 page_text = ' '.join(ocr_results)
                         except Exception as e:
                             results_log.append(f"Page {page_idx + 1}: OCR error - {str(e)}")
@@ -3869,46 +3979,115 @@ Use null for fields not found. Return ONLY valid JSON."""
         return results
     
     def show_bulk_trf_comparison_dialog(self, results, patient_key):
-        """Show TRF comparison dialog for bulk verification"""
+        """Show enhanced TRF comparison dialog with side-by-side view"""
         dialog = QDialog(self)
-        dialog.setWindowTitle(f"TRF Verification - {patient_key}")
-        dialog.setMinimumWidth(700)
-        dialog.setMinimumHeight(450)
+        dialog.setWindowTitle(f"📋 TRF Verification - {patient_key}")
+        dialog.setMinimumWidth(900)
+        dialog.setMinimumHeight(600)
         
         layout = QVBoxLayout()
         dialog.setLayout(layout)
         
-        # Header
+        # Get patient info for display
+        patients_dict = self.get_trf_patients_dict()
+        patient_data = patients_dict.get(patient_key, {})
+        p_info = patient_data.get('patient_info', {})
+        
+        # Header with summary
+        header_layout = QHBoxLayout()
+        
         all_match = all(r['status'] in ['ok', 'skip'] for r in results)
+        mismatch_count = sum(1 for r in results if r['status'] == 'mismatch')
+        suggestion_count = sum(1 for r in results if r['can_apply'])
+        
         if all_match:
-            header = QLabel(f"✅ {patient_key}: All fields verified!")
+            header = QLabel(f"✅ All fields verified for: {p_info.get('patient_name', patient_key)}")
             header.setStyleSheet("font-size: 16px; font-weight: bold; color: #28a745; padding: 10px;")
         else:
-            header = QLabel(f"⚠️ {patient_key}: Review differences below")
+            header = QLabel(f"⚠️ Review differences for: {p_info.get('patient_name', patient_key)}")
             header.setStyleSheet("font-size: 16px; font-weight: bold; color: #dc3545; padding: 10px;")
-        layout.addWidget(header)
+        header_layout.addWidget(header)
+        header_layout.addStretch()
         
-        # Comparison Table
+        # Summary badges
+        if mismatch_count > 0:
+            mismatch_badge = QLabel(f"⚠️ {mismatch_count} Differences")
+            mismatch_badge.setStyleSheet("background-color: #dc3545; color: white; padding: 5px 10px; border-radius: 10px;")
+            header_layout.addWidget(mismatch_badge)
+        if suggestion_count > 0:
+            suggest_badge = QLabel(f"💡 {suggestion_count} Suggestions")
+            suggest_badge.setStyleSheet("background-color: #007bff; color: white; padding: 5px 10px; border-radius: 10px;")
+            header_layout.addWidget(suggest_badge)
+        
+        layout.addLayout(header_layout)
+        
+        # Info row
+        info_label = QLabel(f"PIN: {p_info.get('pin', 'N/A')} | Hospital: {p_info.get('hospital_clinic', 'N/A')}")
+        info_label.setStyleSheet("color: #666; padding: 0 10px 10px 10px;")
+        layout.addWidget(info_label)
+        
+        # Comparison Table with improved styling
         table = QTableWidget()
         table.setColumnCount(5)
-        table.setHorizontalHeaderLabels(["Field", "Current Value", "TRF Value", "Status", "Action"])
-        table.horizontalHeader().setStretchLastSection(True)
+        table.setHorizontalHeaderLabels(["Field", "📝 Entered Value", "📄 TRF Value", "Status", "Action"])
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         table.setRowCount(len(results))
+        table.setAlternatingRowColors(True)
+        table.setStyleSheet("""
+            QTableWidget {
+                gridline-color: #ddd;
+                font-size: 12px;
+            }
+            QTableWidget::item {
+                padding: 8px;
+            }
+            QHeaderView::section {
+                background-color: #f8f9fa;
+                padding: 8px;
+                font-weight: bold;
+                border: 1px solid #ddd;
+            }
+        """)
         
         for i, r in enumerate(results):
-            table.setItem(i, 0, QTableWidgetItem(r['field']))
+            # Field name
+            field_item = QTableWidgetItem(r['field'])
+            field_item.setFont(QFont("", -1, QFont.Weight.Bold))
+            table.setItem(i, 0, field_item)
             
-            current_item = QTableWidgetItem(r['entered'])
+            # Current/Entered value
+            current_item = QTableWidgetItem(r['entered'] or '(empty)')
             if r['status'] == 'mismatch':
-                current_item.setBackground(QColor('#ffcccc'))
+                current_item.setBackground(QColor('#ffe6e6'))
+                current_item.setForeground(QColor('#721c24'))
+            elif r['status'] == 'ok':
+                current_item.setBackground(QColor('#d4edda'))
             table.setItem(i, 1, current_item)
             
-            trf_item = QTableWidgetItem(r['trf_value'])
-            if r['status'] in ['mismatch', 'suggestion']:
-                trf_item.setBackground(QColor('#ccffcc'))
+            # TRF value
+            trf_value = r['trf_value'] or '(not found)'
+            trf_item = QTableWidgetItem(trf_value)
+            if r['status'] in ['mismatch', 'suggestion'] and trf_value != '(not found)':
+                trf_item.setBackground(QColor('#d4edda'))
+                trf_item.setForeground(QColor('#155724'))
+            elif trf_value == '(not found)':
+                trf_item.setForeground(QColor('#999'))
             table.setItem(i, 2, trf_item)
             
-            status_item = QTableWidgetItem(r['message'])
+            # Status with icon
+            status_text = r['message']
+            if r['status'] == 'ok':
+                status_text = "✓ " + status_text
+            elif r['status'] == 'mismatch':
+                status_text = "⚠ " + status_text
+            elif r['status'] == 'suggestion':
+                status_text = "💡 " + status_text
+            
+            status_item = QTableWidgetItem(status_text)
             if r['status'] == 'ok':
                 status_item.setForeground(QColor('#28a745'))
             elif r['status'] in ['mismatch', 'warning']:
@@ -3917,28 +4096,55 @@ Use null for fields not found. Return ONLY valid JSON."""
                 status_item.setForeground(QColor('#007bff'))
             table.setItem(i, 3, status_item)
             
+            # Action button
             if r['can_apply'] and r['trf_value'] and r['trf_value'] != '(not found)':
-                apply_btn = QPushButton("Apply")
-                apply_btn.setStyleSheet("background-color: #28a745; color: white; padding: 3px 8px;")
+                apply_btn = QPushButton("Apply →")
+                apply_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #28a745; 
+                        color: white; 
+                        padding: 5px 12px;
+                        border-radius: 3px;
+                        font-weight: bold;
+                    }
+                    QPushButton:hover {
+                        background-color: #218838;
+                    }
+                """)
                 apply_btn.clicked.connect(lambda checked, res=r, pk=patient_key, tbl=table, idx=i: 
                                          self.apply_bulk_trf_value(res, pk, tbl, idx))
                 table.setCellWidget(i, 4, apply_btn)
         
+        table.resizeRowsToContents()
         layout.addWidget(table)
         
-        # Buttons
+        # Bottom buttons
         btn_layout = QHBoxLayout()
         
-        suggestions = [r for r in results if r['can_apply']]
+        # Apply All button (if there are suggestions)
+        suggestions = [r for r in results if r['can_apply'] and r['trf_value'] and r['trf_value'] != '(not found)']
         if suggestions:
-            apply_all_btn = QPushButton(f"✓ Apply All ({len(suggestions)})")
-            apply_all_btn.setStyleSheet("background-color: #007bff; color: white; padding: 8px 16px;")
+            apply_all_btn = QPushButton(f"✓ Apply All Changes ({len(suggestions)})")
+            apply_all_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #007bff; 
+                    color: white; 
+                    padding: 10px 20px;
+                    font-weight: bold;
+                    border-radius: 5px;
+                }
+                QPushButton:hover {
+                    background-color: #0056b3;
+                }
+            """)
             apply_all_btn.clicked.connect(lambda: self.apply_all_bulk_trf_values(results, patient_key, table))
             btn_layout.addWidget(apply_all_btn)
         
         btn_layout.addStretch()
         
+        # Close button
         close_btn = QPushButton("Close")
+        close_btn.setStyleSheet("padding: 10px 20px;")
         close_btn.clicked.connect(dialog.accept)
         btn_layout.addWidget(close_btn)
         
