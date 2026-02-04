@@ -3978,15 +3978,63 @@ Use null for fields not found. Return ONLY valid JSON."""
         
         return results
     
+    def get_trf_preview_image(self, patient_key):
+        """Get TRF image for preview"""
+        from PIL import Image
+        import io
+        
+        trf_mapping = getattr(self, 'patient_trf_mapping', {})
+        if patient_key not in trf_mapping:
+            return None
+        
+        trf_info = trf_mapping[patient_key]
+        trf_path = trf_info.get('trf_path')
+        
+        if not trf_path or not os.path.exists(trf_path):
+            return None
+        
+        try:
+            file_ext = os.path.splitext(trf_path)[1].lower()
+            
+            if file_ext == '.pdf':
+                if not PDFPLUMBER_AVAILABLE:
+                    return None
+                
+                with pdfplumber.open(trf_path) as pdf:
+                    # Check if it's from bulk PDF (specific page)
+                    if trf_info.get('is_bulk_pdf'):
+                        page_idx = trf_info.get('trf_page', 0)
+                        if page_idx < len(pdf.pages):
+                            page = pdf.pages[page_idx]
+                        else:
+                            return None
+                    else:
+                        page = pdf.pages[0]
+                    
+                    # Convert to image
+                    pil_img = page.to_image(resolution=150).original
+                    return pil_img
+            else:
+                # Image file
+                return Image.open(trf_path)
+                
+        except Exception as e:
+            print(f"TRF preview error: {e}")
+            return None
+    
     def show_bulk_trf_comparison_dialog(self, results, patient_key):
-        """Show enhanced TRF comparison dialog with side-by-side view"""
+        """Show enhanced TRF comparison dialog with 3-panel view:
+        - Left: Entered values
+        - Center: TRF extracted values + comparison
+        - Right: TRF image preview
+        """
         dialog = QDialog(self)
         dialog.setWindowTitle(f"📋 TRF Verification - {patient_key}")
-        dialog.setMinimumWidth(900)
-        dialog.setMinimumHeight(600)
+        dialog.setMinimumWidth(1400)
+        dialog.setMinimumHeight(700)
         
-        layout = QVBoxLayout()
-        dialog.setLayout(layout)
+        main_layout = QVBoxLayout()
+        dialog.setLayout(main_layout)
         
         # Get patient info for display
         patients_dict = self.get_trf_patients_dict()
@@ -4015,60 +4063,86 @@ Use null for fields not found. Return ONLY valid JSON."""
             mismatch_badge.setStyleSheet("background-color: #dc3545; color: white; padding: 5px 10px; border-radius: 10px;")
             header_layout.addWidget(mismatch_badge)
         if suggestion_count > 0:
-            suggest_badge = QLabel(f"💡 {suggestion_count} Suggestions")
+            suggest_badge = QLabel(f"💡 {suggestion_count} Can Apply")
             suggest_badge.setStyleSheet("background-color: #007bff; color: white; padding: 5px 10px; border-radius: 10px;")
             header_layout.addWidget(suggest_badge)
         
-        layout.addLayout(header_layout)
+        main_layout.addLayout(header_layout)
         
-        # Info row
-        info_label = QLabel(f"PIN: {p_info.get('pin', 'N/A')} | Hospital: {p_info.get('hospital_clinic', 'N/A')}")
+        # TRF info row
+        trf_mapping = getattr(self, 'patient_trf_mapping', {})
+        trf_info = trf_mapping.get(patient_key, {})
+        trf_path = trf_info.get('trf_path', 'N/A')
+        page_info = ""
+        if trf_info.get('is_bulk_pdf'):
+            page_info = f" (Page {trf_info.get('trf_page', 0) + 1})"
+        
+        info_label = QLabel(f"PIN: {p_info.get('pin', 'N/A')} | TRF: {os.path.basename(trf_path)}{page_info}")
         info_label.setStyleSheet("color: #666; padding: 0 10px 10px 10px;")
-        layout.addWidget(info_label)
+        main_layout.addWidget(info_label)
         
-        # Comparison Table with improved styling
-        table = QTableWidget()
-        table.setColumnCount(5)
-        table.setHorizontalHeaderLabels(["Field", "📝 Entered Value", "📄 TRF Value", "Status", "Action"])
-        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        table.setRowCount(len(results))
-        table.setAlternatingRowColors(True)
-        table.setStyleSheet("""
-            QTableWidget {
-                gridline-color: #ddd;
-                font-size: 12px;
-            }
-            QTableWidget::item {
-                padding: 8px;
-            }
-            QHeaderView::section {
-                background-color: #f8f9fa;
-                padding: 8px;
-                font-weight: bold;
-                border: 1px solid #ddd;
-            }
-        """)
+        # === 3-PANEL LAYOUT ===
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        
+        # ===== LEFT PANEL: Entered Values =====
+        left_panel = QWidget()
+        left_layout = QVBoxLayout()
+        left_panel.setLayout(left_layout)
+        
+        left_header = QLabel("📝 Entered Values")
+        left_header.setStyleSheet("font-size: 14px; font-weight: bold; background-color: #e3f2fd; padding: 8px; border-radius: 5px;")
+        left_layout.addWidget(left_header)
+        
+        entered_table = QTableWidget()
+        entered_table.setColumnCount(2)
+        entered_table.setHorizontalHeaderLabels(["Field", "Value"])
+        entered_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        entered_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        entered_table.setRowCount(len(results))
+        entered_table.setAlternatingRowColors(True)
+        entered_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         
         for i, r in enumerate(results):
-            # Field name
             field_item = QTableWidgetItem(r['field'])
             field_item.setFont(QFont("", -1, QFont.Weight.Bold))
-            table.setItem(i, 0, field_item)
+            entered_table.setItem(i, 0, field_item)
             
-            # Current/Entered value
-            current_item = QTableWidgetItem(r['entered'] or '(empty)')
+            value = r['entered'] or '(empty)'
+            value_item = QTableWidgetItem(value)
             if r['status'] == 'mismatch':
-                current_item.setBackground(QColor('#ffe6e6'))
-                current_item.setForeground(QColor('#721c24'))
+                value_item.setBackground(QColor('#ffe6e6'))
             elif r['status'] == 'ok':
-                current_item.setBackground(QColor('#d4edda'))
-            table.setItem(i, 1, current_item)
+                value_item.setBackground(QColor('#d4edda'))
+            entered_table.setItem(i, 1, value_item)
+        
+        entered_table.resizeRowsToContents()
+        left_layout.addWidget(entered_table)
+        splitter.addWidget(left_panel)
+        
+        # ===== CENTER PANEL: TRF Values + Actions =====
+        center_panel = QWidget()
+        center_layout = QVBoxLayout()
+        center_panel.setLayout(center_layout)
+        
+        center_header = QLabel("📄 TRF Extracted Values")
+        center_header.setStyleSheet("font-size: 14px; font-weight: bold; background-color: #e8f5e9; padding: 8px; border-radius: 5px;")
+        center_layout.addWidget(center_header)
+        
+        trf_table = QTableWidget()
+        trf_table.setColumnCount(3)
+        trf_table.setHorizontalHeaderLabels(["Field", "TRF Value", "Action"])
+        trf_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        trf_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        trf_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        trf_table.setRowCount(len(results))
+        trf_table.setAlternatingRowColors(True)
+        trf_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        
+        for i, r in enumerate(results):
+            field_item = QTableWidgetItem(r['field'])
+            field_item.setFont(QFont("", -1, QFont.Weight.Bold))
+            trf_table.setItem(i, 0, field_item)
             
-            # TRF value
             trf_value = r['trf_value'] or '(not found)'
             trf_item = QTableWidgetItem(trf_value)
             if r['status'] in ['mismatch', 'suggestion'] and trf_value != '(not found)':
@@ -4076,60 +4150,45 @@ Use null for fields not found. Return ONLY valid JSON."""
                 trf_item.setForeground(QColor('#155724'))
             elif trf_value == '(not found)':
                 trf_item.setForeground(QColor('#999'))
-            table.setItem(i, 2, trf_item)
+            trf_table.setItem(i, 1, trf_item)
             
-            # Status with icon
-            status_text = r['message']
-            if r['status'] == 'ok':
-                status_text = "✓ " + status_text
-            elif r['status'] == 'mismatch':
-                status_text = "⚠ " + status_text
-            elif r['status'] == 'suggestion':
-                status_text = "💡 " + status_text
-            
-            status_item = QTableWidgetItem(status_text)
-            if r['status'] == 'ok':
-                status_item.setForeground(QColor('#28a745'))
-            elif r['status'] in ['mismatch', 'warning']:
-                status_item.setForeground(QColor('#dc3545'))
-            elif r['status'] == 'suggestion':
-                status_item.setForeground(QColor('#007bff'))
-            table.setItem(i, 3, status_item)
-            
-            # Action button
+            # Status + Action
             if r['can_apply'] and r['trf_value'] and r['trf_value'] != '(not found)':
                 apply_btn = QPushButton("Apply →")
                 apply_btn.setStyleSheet("""
                     QPushButton {
                         background-color: #28a745; 
                         color: white; 
-                        padding: 5px 12px;
+                        padding: 4px 10px;
                         border-radius: 3px;
-                        font-weight: bold;
                     }
                     QPushButton:hover {
                         background-color: #218838;
                     }
                 """)
-                apply_btn.clicked.connect(lambda checked, res=r, pk=patient_key, tbl=table, idx=i: 
-                                         self.apply_bulk_trf_value(res, pk, tbl, idx))
-                table.setCellWidget(i, 4, apply_btn)
+                apply_btn.clicked.connect(
+                    lambda checked, res=r, pk=patient_key, et=entered_table, idx=i: 
+                    self.apply_trf_value_with_preview(res, pk, et, idx)
+                )
+                trf_table.setCellWidget(i, 2, apply_btn)
+            else:
+                status_item = QTableWidgetItem("✓" if r['status'] == 'ok' else "—")
+                if r['status'] == 'ok':
+                    status_item.setForeground(QColor('#28a745'))
+                trf_table.setItem(i, 2, status_item)
         
-        table.resizeRowsToContents()
-        layout.addWidget(table)
+        trf_table.resizeRowsToContents()
+        center_layout.addWidget(trf_table)
         
-        # Bottom buttons
-        btn_layout = QHBoxLayout()
-        
-        # Apply All button (if there are suggestions)
+        # Apply All button in center panel
         suggestions = [r for r in results if r['can_apply'] and r['trf_value'] and r['trf_value'] != '(not found)']
         if suggestions:
-            apply_all_btn = QPushButton(f"✓ Apply All Changes ({len(suggestions)})")
+            apply_all_btn = QPushButton(f"✓ Apply All ({len(suggestions)})")
             apply_all_btn.setStyleSheet("""
                 QPushButton {
                     background-color: #007bff; 
                     color: white; 
-                    padding: 10px 20px;
+                    padding: 10px;
                     font-weight: bold;
                     border-radius: 5px;
                 }
@@ -4137,28 +4196,133 @@ Use null for fields not found. Return ONLY valid JSON."""
                     background-color: #0056b3;
                 }
             """)
-            apply_all_btn.clicked.connect(lambda: self.apply_all_bulk_trf_values(results, patient_key, table))
-            btn_layout.addWidget(apply_all_btn)
+            apply_all_btn.clicked.connect(
+                lambda: self.apply_all_trf_values_with_preview(results, patient_key, entered_table)
+            )
+            center_layout.addWidget(apply_all_btn)
         
+        splitter.addWidget(center_panel)
+        
+        # ===== RIGHT PANEL: TRF Image Preview =====
+        right_panel = QWidget()
+        right_layout = QVBoxLayout()
+        right_panel.setLayout(right_layout)
+        
+        right_header = QLabel("🖼️ TRF Preview")
+        right_header.setStyleSheet("font-size: 14px; font-weight: bold; background-color: #fff3e0; padding: 8px; border-radius: 5px;")
+        right_layout.addWidget(right_header)
+        
+        # Image preview area with scroll
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setStyleSheet("background-color: #f5f5f5; border: 1px solid #ddd;")
+        
+        preview_label = QLabel()
+        preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Load TRF image
+        trf_image = self.get_trf_preview_image(patient_key)
+        if trf_image:
+            from PIL import Image
+            import io
+            
+            # Scale image to fit preview (max width 500px)
+            max_width = 500
+            if trf_image.width > max_width:
+                ratio = max_width / trf_image.width
+                new_height = int(trf_image.height * ratio)
+                trf_image = trf_image.resize((max_width, new_height), Image.Resampling.LANCZOS)
+            
+            # Convert PIL to QPixmap
+            img_buffer = io.BytesIO()
+            trf_image.save(img_buffer, format='PNG')
+            img_buffer.seek(0)
+            
+            from PyQt6.QtGui import QPixmap
+            pixmap = QPixmap()
+            pixmap.loadFromData(img_buffer.getvalue())
+            preview_label.setPixmap(pixmap)
+        else:
+            preview_label.setText("TRF preview not available")
+            preview_label.setStyleSheet("color: #999; padding: 50px;")
+        
+        scroll_area.setWidget(preview_label)
+        right_layout.addWidget(scroll_area)
+        
+        # Zoom controls
+        zoom_layout = QHBoxLayout()
+        zoom_in_btn = QPushButton("🔍+")
+        zoom_out_btn = QPushButton("🔍-")
+        zoom_fit_btn = QPushButton("Fit")
+        
+        for btn in [zoom_in_btn, zoom_out_btn, zoom_fit_btn]:
+            btn.setStyleSheet("padding: 5px 15px;")
+        
+        self._preview_scale = 1.0
+        self._preview_original_image = trf_image
+        
+        def zoom_preview(factor):
+            if not self._preview_original_image:
+                return
+            self._preview_scale *= factor
+            self._preview_scale = max(0.25, min(3.0, self._preview_scale))
+            
+            new_width = int(self._preview_original_image.width * self._preview_scale)
+            new_height = int(self._preview_original_image.height * self._preview_scale)
+            
+            from PIL import Image
+            import io
+            scaled_img = self._preview_original_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            img_buffer = io.BytesIO()
+            scaled_img.save(img_buffer, format='PNG')
+            img_buffer.seek(0)
+            
+            from PyQt6.QtGui import QPixmap
+            pixmap = QPixmap()
+            pixmap.loadFromData(img_buffer.getvalue())
+            preview_label.setPixmap(pixmap)
+        
+        def fit_preview():
+            if not self._preview_original_image:
+                return
+            self._preview_scale = 500 / self._preview_original_image.width
+            zoom_preview(1.0)
+        
+        zoom_in_btn.clicked.connect(lambda: zoom_preview(1.25))
+        zoom_out_btn.clicked.connect(lambda: zoom_preview(0.8))
+        zoom_fit_btn.clicked.connect(fit_preview)
+        
+        zoom_layout.addWidget(zoom_out_btn)
+        zoom_layout.addWidget(zoom_fit_btn)
+        zoom_layout.addWidget(zoom_in_btn)
+        zoom_layout.addStretch()
+        right_layout.addLayout(zoom_layout)
+        
+        splitter.addWidget(right_panel)
+        
+        # Set splitter sizes (30% / 30% / 40%)
+        splitter.setSizes([350, 350, 500])
+        
+        main_layout.addWidget(splitter)
+        
+        # Bottom close button
+        btn_layout = QHBoxLayout()
         btn_layout.addStretch()
-        
-        # Close button
         close_btn = QPushButton("Close")
-        close_btn.setStyleSheet("padding: 10px 20px;")
+        close_btn.setStyleSheet("padding: 10px 30px;")
         close_btn.clicked.connect(dialog.accept)
         btn_layout.addWidget(close_btn)
-        
-        layout.addLayout(btn_layout)
+        main_layout.addLayout(btn_layout)
         
         dialog.exec()
     
-    def apply_bulk_trf_value(self, result, patient_key, table, row_idx):
-        """Apply a TRF value in bulk verification context"""
+    def apply_trf_value_with_preview(self, result, patient_key, entered_table, row_idx):
+        """Apply a TRF value and update the entered values table"""
         patients_dict = self.get_trf_patients_dict()
         if patient_key not in patients_dict:
             return
         
-        # Get the actual list index to update bulk_patient_data_list
         list_index = patients_dict[patient_key].get('list_index')
         if list_index is None or list_index >= len(self.bulk_patient_data_list):
             return
@@ -4166,27 +4330,27 @@ Use null for fields not found. Return ONLY valid JSON."""
         field_key = result['field_key']
         trf_value = result['trf_value']
         
-        # Update the stored patient data in bulk_patient_data_list
+        # Update the stored patient data
         self.bulk_patient_data_list[list_index]['patient_info'][field_key] = trf_value
         
-        # Update table display
-        table.item(row_idx, 1).setText(trf_value)
-        table.item(row_idx, 1).setBackground(QColor('#ccffcc'))
-        table.item(row_idx, 3).setText("✓ Applied")
-        table.item(row_idx, 3).setForeground(QColor('#28a745'))
-        table.removeCellWidget(row_idx, 4)
+        # Update the entered values table
+        entered_table.item(row_idx, 1).setText(trf_value)
+        entered_table.item(row_idx, 1).setBackground(QColor('#d4edda'))
         
-        self.statusBar().showMessage(f"Applied {result['field']} for {patient_key}")
+        # Mark as applied
+        result['can_apply'] = False
+        
+        self.statusBar().showMessage(f"Applied {result['field']}: {trf_value}")
     
-    def apply_all_bulk_trf_values(self, results, patient_key, table):
-        """Apply all TRF suggestions in bulk context"""
+    def apply_all_trf_values_with_preview(self, results, patient_key, entered_table):
+        """Apply all TRF suggestions"""
         count = 0
         for i, r in enumerate(results):
             if r['can_apply'] and r['trf_value'] and r['trf_value'] != '(not found)':
-                self.apply_bulk_trf_value(r, patient_key, table, i)
+                self.apply_trf_value_with_preview(r, patient_key, entered_table, i)
                 count += 1
         
-        QMessageBox.information(self, "Applied", f"Applied {count} values for {patient_key}")
+        QMessageBox.information(self, "Applied", f"Applied {count} values from TRF")
     
     def upload_bulk_trf_dialog(self):
         """Upload multiple TRFs from the dialog"""
