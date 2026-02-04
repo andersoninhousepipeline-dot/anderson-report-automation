@@ -24,13 +24,13 @@ def resource_path(relative_path):
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTabWidget, QLabel, QLineEdit, QTextEdit, QPushButton, QFileDialog,
-    QTableWidget, QTableWidgetItem, QMessageBox, QProgressBar,
+    QTableWidget, QTableWidgetItem, QMessageBox, QProgressBar, QProgressDialog,
     QGroupBox, QFormLayout, QScrollArea, QCheckBox, QSpinBox,
     QComboBox, QListWidget, QListWidgetItem, QStyle, QGridLayout,
-    QSplitter, QTextBrowser, QRadioButton, QDialog, QDialogButtonBox
+    QSplitter, QTextBrowser, QRadioButton, QDialog, QDialogButtonBox, QHeaderView
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings, QTimer
-from PyQt6.QtGui import QPixmap, QIcon, QColor, QBrush
+from PyQt6.QtGui import QPixmap, QIcon, QColor, QBrush, QFont
 try:
     from PyQt6.QtPdf import QPdfDocument
     from PyQt6.QtPdfWidgets import QPdfView
