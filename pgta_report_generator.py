@@ -2963,71 +2963,164 @@ Use null for fields not found. Return ONLY valid JSON."""
         if not raw_text:
             return data
         
-        text = raw_text.lower()
-        lines = raw_text.split('\n')
+        # Normalize text - handle OCR artifacts
+        text_clean = re.sub(r'\s+', ' ', raw_text)
+        lines = [l.strip() for l in raw_text.split('\n') if l.strip()]
         
-        # Common patterns for TRF fields
-        patterns = {
-            'patient_name': [
-                r'patient\s*name\s*[:\-]?\s*(.+?)(?:\n|$)',
-                r'name\s*[:\-]?\s*(.+?)(?:\n|$)',
-                r'patient\s*[:\-]?\s*(.+?)(?:\n|$)',
-            ],
-            'hospital_clinic': [
-                r'hospital\s*[/&]?\s*clinic\s*[:\-]?\s*(.+?)(?:\n|$)',
-                r'center\s*name\s*[:\-]?\s*(.+?)(?:\n|$)',
-                r'clinic\s*[:\-]?\s*(.+?)(?:\n|$)',
-                r'hospital\s*[:\-]?\s*(.+?)(?:\n|$)',
-                r'fertility\s*(?:center|centre|clinic)\s*[:\-]?\s*(.+?)(?:\n|$)',
-            ],
-            'pin': [
-                r'pin\s*[:\-]?\s*([A-Z0-9]+)',
-                r'sample\s*id\s*[:\-]?\s*([A-Z0-9]+)',
-                r'patient\s*id\s*[:\-]?\s*([A-Z0-9]+)',
-                r'(?:^|\n)([A-Z]{2,4}\d{8,})',  # Pattern like AND25150117496
-            ],
-            'biopsy_date': [
-                r'(?:date\s*of\s*)?biopsy\s*(?:date)?\s*[:\-]?\s*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
-                r'biopsy\s*[:\-]?\s*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
-            ],
-            'sample_receipt_date': [
-                r'(?:sample\s*)?receipt\s*(?:date)?\s*[:\-]?\s*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
-                r'(?:date\s*)?received\s*[:\-]?\s*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
-            ],
-            'referring_clinician': [
-                r'referring\s*(?:clinician|doctor|physician)\s*[:\-]?\s*(?:dr\.?\s*)?(.+?)(?:\n|$)',
-                r'clinician\s*[:\-]?\s*(?:dr\.?\s*)?(.+?)(?:\n|$)',
-                r'doctor\s*[:\-]?\s*(?:dr\.?\s*)?(.+?)(?:\n|$)',
-            ],
-        }
+        # Build a map of label -> value pairs from the text
+        # This handles formats like "Label: Value" or "Label Value" on same/next line
+        label_value_pairs = {}
         
-        # Try to find each field
-        for field_key, field_patterns in patterns.items():
-            for pattern in field_patterns:
-                match = re.search(pattern, raw_text, re.IGNORECASE | re.MULTILINE)
+        for i, line in enumerate(lines):
+            line_lower = line.lower()
+            
+            # Check for "Label: Value" format
+            if ':' in line:
+                parts = line.split(':', 1)
+                if len(parts) == 2:
+                    label = parts[0].strip().lower()
+                    value = parts[1].strip()
+                    if value:
+                        label_value_pairs[label] = value
+                    elif i + 1 < len(lines):
+                        # Value might be on next line
+                        label_value_pairs[label] = lines[i + 1].strip()
+        
+        # Extract PATIENT NAME - be specific, exclude "referring" context
+        patient_name_labels = ['patient name', 'patient\'s name', 'name of patient', 'patient']
+        for label in patient_name_labels:
+            for key, value in label_value_pairs.items():
+                # Make sure it's not referring clinician or doctor
+                if label in key and 'refer' not in key and 'doctor' not in key and 'clinician' not in key and 'dr' not in key:
+                    # Validate - patient names usually don't start with "Dr" or have medical titles
+                    if value and not value.lower().startswith('dr') and len(value) > 2:
+                        data['patient_name'] = value
+                        break
+            if data['patient_name']:
+                break
+        
+        # Fallback: search with regex but exclude referring doctor context
+        if not data['patient_name']:
+            # Look for "Patient Name" specifically, not just "Name"
+            match = re.search(r'patient\s*(?:\'s\s*)?name\s*[:\-]?\s*([A-Za-z][A-Za-z\s\.]+?)(?:\n|$|patient|pin|age|sample)', raw_text, re.IGNORECASE)
+            if match:
+                value = match.group(1).strip()
+                # Ensure it's not a doctor name (no Dr. prefix, not too short)
+                if value and not value.lower().startswith('dr') and len(value) > 3:
+                    data['patient_name'] = re.sub(r'\s+', ' ', value).rstrip(':,-.')
+        
+        # Extract HOSPITAL/CLINIC
+        hospital_labels = ['hospital', 'clinic', 'center name', 'centre name', 'hospital/clinic', 'fertility center', 'fertility centre', 'ivf center', 'ivf centre']
+        for label in hospital_labels:
+            for key, value in label_value_pairs.items():
+                if label in key:
+                    if value and len(value) > 2:
+                        data['hospital_clinic'] = value
+                        break
+            if data['hospital_clinic']:
+                break
+        
+        # Fallback regex for hospital
+        if not data['hospital_clinic']:
+            patterns = [
+                r'(?:hospital|clinic|center|centre)\s*(?:name)?\s*[:\-]?\s*([A-Za-z][A-Za-z\s\.\&]+?)(?:\n|$|patient|pin)',
+                r'([A-Za-z\s]+(?:fertility|ivf|hospital|clinic|center|centre)[A-Za-z\s]*)',
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, raw_text, re.IGNORECASE)
                 if match:
                     value = match.group(1).strip()
-                    # Clean up the value
-                    value = re.sub(r'\s+', ' ', value)
-                    # Remove trailing punctuation
-                    value = value.rstrip(':,-.')
-                    if value and len(value) > 1:
-                        data[field_key] = value
+                    if value and len(value) > 3:
+                        data['hospital_clinic'] = re.sub(r'\s+', ' ', value).rstrip(':,-.')
                         break
         
-        # Special handling for dates - normalize format
-        for date_field in ['biopsy_date', 'sample_receipt_date']:
-            if data[date_field]:
-                # Try to normalize date format to DD/MM/YYYY
-                date_val = data[date_field]
-                date_match = re.match(r'(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{2,4})', date_val)
-                if date_match:
-                    d, m, y = date_match.groups()
-                    if len(y) == 2:
-                        y = '20' + y
-                    data[date_field] = f"{d.zfill(2)}/{m.zfill(2)}/{y}"
+        # Extract PIN/Sample ID - these have specific alphanumeric patterns
+        pin_labels = ['pin', 'sample id', 'patient id', 'id', 'sample no', 'sample number']
+        for label in pin_labels:
+            for key, value in label_value_pairs.items():
+                if label in key:
+                    # PIN should be alphanumeric, often starts with letters
+                    pin_match = re.search(r'([A-Z]{2,4}\d{6,}|\d{6,}[A-Z]*)', value, re.IGNORECASE)
+                    if pin_match:
+                        data['pin'] = pin_match.group(1).upper()
+                        break
+            if data['pin']:
+                break
+        
+        # Fallback: find PIN pattern anywhere in text
+        if not data['pin']:
+            # Common PIN patterns: AND25150117496, AMB00000123, etc.
+            match = re.search(r'\b([A-Z]{2,4}\d{8,})\b', raw_text, re.IGNORECASE)
+            if match:
+                data['pin'] = match.group(1).upper()
+        
+        # Extract BIOPSY DATE
+        biopsy_labels = ['biopsy date', 'date of biopsy', 'biopsy']
+        for label in biopsy_labels:
+            for key, value in label_value_pairs.items():
+                if label in key:
+                    date_match = re.search(r'(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})', value)
+                    if date_match:
+                        data['biopsy_date'] = self._normalize_date(date_match.group(1))
+                        break
+            if data['biopsy_date']:
+                break
+        
+        # Fallback regex
+        if not data['biopsy_date']:
+            match = re.search(r'biopsy\s*(?:date)?\s*[:\-]?\s*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})', raw_text, re.IGNORECASE)
+            if match:
+                data['biopsy_date'] = self._normalize_date(match.group(1))
+        
+        # Extract SAMPLE RECEIPT DATE
+        receipt_labels = ['sample receipt date', 'receipt date', 'date received', 'received date', 'date sample received']
+        for label in receipt_labels:
+            for key, value in label_value_pairs.items():
+                if label in key or (label.split()[0] in key and label.split()[-1] in key):
+                    date_match = re.search(r'(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})', value)
+                    if date_match:
+                        data['sample_receipt_date'] = self._normalize_date(date_match.group(1))
+                        break
+            if data['sample_receipt_date']:
+                break
+        
+        # Fallback regex
+        if not data['sample_receipt_date']:
+            match = re.search(r'(?:sample\s*)?receipt\s*(?:date)?\s*[:\-]?\s*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})', raw_text, re.IGNORECASE)
+            if match:
+                data['sample_receipt_date'] = self._normalize_date(match.group(1))
+        
+        # Extract REFERRING CLINICIAN - look for "Dr." prefix or "referring" context
+        clinician_labels = ['referring clinician', 'referring doctor', 'referred by', 'clinician', 'referring physician']
+        for label in clinician_labels:
+            for key, value in label_value_pairs.items():
+                if label in key or ('refer' in key and ('doctor' in key or 'clinician' in key or 'by' in key)):
+                    if value and len(value) > 2:
+                        data['referring_clinician'] = value
+                        break
+            if data['referring_clinician']:
+                break
+        
+        # Fallback regex
+        if not data['referring_clinician']:
+            match = re.search(r'refer(?:ring|red)?\s*(?:clinician|doctor|physician|by)\s*[:\-]?\s*(?:dr\.?\s*)?([A-Za-z][A-Za-z\s\.]+?)(?:\n|$|patient|pin)', raw_text, re.IGNORECASE)
+            if match:
+                value = match.group(1).strip()
+                if value and len(value) > 2:
+                    data['referring_clinician'] = re.sub(r'\s+', ' ', value).rstrip(':,-.')
         
         return data
+    
+    def _normalize_date(self, date_str):
+        """Normalize date string to DD/MM/YYYY format"""
+        import re
+        date_match = re.match(r'(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{2,4})', date_str)
+        if date_match:
+            d, m, y = date_match.groups()
+            if len(y) == 2:
+                y = '20' + y
+            return f"{d.zfill(2)}/{m.zfill(2)}/{y}"
+        return date_str
     
     def verify_all_bulk_trf(self):
         """Verify all uploaded TRFs against all patients in the batch"""
