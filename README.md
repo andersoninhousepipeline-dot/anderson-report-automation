@@ -9,55 +9,200 @@ A professional desktop application that generates PDF and DOCX reports for Preim
 ## ✨ Features
 
 - **📝 Manual Data Entry**: User-friendly form interface for entering patient and embryo data
-- **📊 Bulk Upload**: Import multiple patient records from Excel/TSV files
+- **📊 Bulk Upload**: Import multiple patient records from Excel files
+- **📋 TRF Verification**: OCR-powered verification of TRF documents against entered data
 - **🖼️ Image Management**: Upload and manage CNV chart images for embryos
 - **📄 Dual Format Output**: Generate both PDF and DOCX reports simultaneously
 - **🔄 Batch Processing**: Generate reports for multiple patients in one go
 - **💾 Settings Persistence**: Remembers your last used directories and settings
 - **🎨 Professional Templates**: Pixel-perfect recreation of the original PGT-A report design
 - **✅ Data Validation**: Built-in validation to ensure data completeness
-- **📏 Vertical Spacing Control**: Press **Enter** in any field to add manual line breaks/gaps to the PDF.
-- **🖱️ Safe Dropdowns**: Menus ignore mouse wheel to prevent accidental changes.
-- **✏️ Editable Interpretations**: Type custom results directly into the "Interpretation" menu.
 
 ---
 
-## 📋 Requirements
+## 📋 System Requirements
 
-- **Python 3.10+ (64-bit Recommended)**
-- **Operating System**: Windows (10/11), macOS, or Linux
-- **Architecture**: 64-bit is highly recommended to avoid PDF rendering issues.
-- **Dependencies**: See `requirements.txt` (approx. 150MB total)
+| Requirement | Minimum | Recommended |
+|-------------|---------|-------------|
+| **Python** | 3.8+ | 3.10+ (64-bit) |
+| **RAM** | 4 GB | 8 GB |
+| **Storage** | 500 MB | 2 GB (for OCR models) |
+| **OS** | Windows 10, Ubuntu 20.04, macOS 11 | Latest versions |
 
 ---
 
 ## 🚀 Quick Start
 
-### For Linux Users
-1. **Grant execution permission**:
-   ```bash
-   chmod +x launch.sh
+### Windows
+
+1. **Install Python** (if not already installed):
+   - Download from [python.org](https://www.python.org/downloads/)
+   - ⚠️ **IMPORTANT**: Check ✅ "Add Python to PATH" during installation
+
+2. **First-time setup** (run once):
    ```
-2. **Run the application**:
+   Double-click: setup.bat
+   ```
+
+3. **Launch the application**:
+   ```
+   Double-click: launch.bat
+   ```
+
+### Linux / macOS
+
+1. **Install Python** (if not already installed):
+   ```bash
+   # Ubuntu/Debian
+   sudo apt install python3 python3-pip python3-venv
+   
+   # Fedora
+   sudo dnf install python3 python3-pip
+   
+   # macOS
+   brew install python3
+   ```
+
+2. **First-time setup** (run once):
+   ```bash
+   chmod +x setup.sh launch.sh
+   ./setup.sh
+   ```
+
+3. **Launch the application**:
    ```bash
    ./launch.sh
    ```
 
-### For Windows Users
-1. **Install Python**: Download from [python.org](https://www.python.org/) (Check "Add to PATH").
-2. **Launch**: Double-click **`launch.bat`**.
+---
+
+## 📦 Manual Installation
+
+If the quick start scripts don't work, install manually:
+
+```bash
+# Create virtual environment
+python3 -m venv .venv
+
+# Activate it
+# Linux/Mac:
+source .venv/bin/activate
+# Windows:
+.venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the application
+python pgta_report_generator.py
+```
 
 ---
 
-## 🛠️ Detailed Installation (Manual)
+## 📋 TRF Verification Feature
 
-### Step 1: Install Python Dependencies
+The application includes **TRF (Test Request Form) verification** using OCR:
+
+### How to Use:
+1. **Load patient data** from Excel file (Bulk Upload tab)
+2. Click **"TRF Manager"** button
+3. Click **"Upload Bulk TRF PDF"** to load a multi-page PDF with all TRFs
+4. Click **"Auto-Match All"** to automatically match TRF pages to patients
+5. Select a patient and click **"Verify Selected"** to compare data
+6. Review the 3-panel comparison and apply corrections if needed
+
+### OCR Engine:
+- Uses **EasyOCR** (offline, no internet required)
+- Supports scanned documents and mobile camera photos
+- Automatic image preprocessing for better accuracy
+
+---
+
+## 📁 File Structure
+
+```
+PGTA-Report/
+├── launch.bat          # Windows launcher
+├── launch.sh           # Linux/Mac launcher
+├── setup.bat           # Windows first-time setup
+├── setup.sh            # Linux/Mac first-time setup
+├── requirements.txt    # Python dependencies
+├── pgta_report_generator.py  # Main application
+├── pgta_template.py    # PDF template generator
+├── pgta_docx_generator.py    # DOCX generator
+├── assets/             # Images, fonts, signatures
+├── batch-demo/         # Example Excel files
+└── README.md           # This file
+```
+
+---
+
+## 🛠️ Troubleshooting
+
+### "Python not found"
+- Windows: Reinstall Python with "Add to PATH" checked
+- Linux: `sudo apt install python3 python3-venv`
+
+### "Failed to install dependencies"
 ```bash
+# Try upgrading pip first
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### Step 2: Run the App
+### "EasyOCR download error"
+- EasyOCR downloads language models on first use (~100MB)
+- Ensure you have internet connection for first run
+- Models are cached in `~/.EasyOCR/`
+
+### Application crashes on startup
 ```bash
+# Delete virtual environment and reinstall
+rm -rf .venv  # Linux/Mac
+rmdir /s /q .venv  # Windows
+
+# Then run setup script again
+./setup.sh  # or setup.bat on Windows
+```
+
+---
+
+## 📊 Excel File Format
+
+For bulk upload, use Excel files with these sheets:
+
+### "Details" Sheet (Patient Info)
+| Column | Description |
+|--------|-------------|
+| Patient Name | Full patient name |
+| Sample ID | Unique sample identifier |
+| Center name | Hospital/Clinic name |
+| Date of Biopsy | DD/MM/YYYY format |
+| Date Sample Received | DD/MM/YYYY format |
+| EMBRYOLOGIST NAME | Biopsy performed by |
+
+### "summary" Sheet (Embryo Results)
+| Column | Description |
+|--------|-------------|
+| Sample name | Patient identifier |
+| Conclusion | Normal/Abnormal/Mosaic |
+| Result | Detailed chromosome result |
+| MTcopy | Mitochondrial copy number |
+| AUTOSOMES | Autosome status |
+| SEX | Sex chromosome status |
+
+---
+
+## 📄 License
+
+Internal use only - Anderson Diagnostic Services
+
+---
+
+## 🆘 Support
+
+For issues or feature requests, contact the development team or create an issue in the repository.
+
 python pgta_report_generator.py
 ```
 
