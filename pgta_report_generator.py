@@ -2858,7 +2858,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                 QMessageBox.warning(self, "No TRFs", "Please upload TRF files first.")
                 return
         
-        if not hasattr(self, 'batch_patients_data') or not self.batch_patients_data:
+        if not hasattr(self, 'bulk_patient_data_list') or not self.bulk_patient_data_list:
             QMessageBox.warning(self, "No Patients", "Please load patient data first using an Excel file.")
             return
         
@@ -2866,6 +2866,22 @@ Use null for fields not found. Return ONLY valid JSON."""
             self.verify_bulk_trf_single_pdf()
         else:
             self.verify_bulk_trf_multiple_files()
+    
+    def get_trf_patients_dict(self):
+        """Get patients data as dictionary for TRF matching"""
+        patients_dict = {}
+        if hasattr(self, 'bulk_patient_data_list') and self.bulk_patient_data_list:
+            for i, data in enumerate(self.bulk_patient_data_list):
+                p_info = data.get('patient_info', {})
+                p_name = p_info.get('patient_name', f'Patient_{i}')
+                # Use index as unique key to handle duplicate names
+                patient_key = f"{p_name}_{i}"
+                patients_dict[patient_key] = {
+                    'patient_info': p_info,
+                    'embryos': data.get('embryos', []),
+                    'list_index': i  # Store original index for updates
+                }
+        return patients_dict
     
     def verify_bulk_trf_single_pdf(self):
         """Verify all pages in bulk TRF PDF against patients"""
@@ -2900,8 +2916,9 @@ Use null for fields not found. Return ONLY valid JSON."""
         progress_dialog.show()
         QApplication.processEvents()
         
-        # Get patient list for matching
-        patients_list = list(self.batch_patients_data.items())
+        # Get patient list for matching using helper
+        patients_dict = self.get_trf_patients_dict()
+        patients_list = list(patients_dict.items())
         matched_count = 0
         unmatched_pages = []
         page_patient_matches = {}
@@ -3000,7 +3017,7 @@ Use null for fields not found. Return ONLY valid JSON."""
             QMessageBox.warning(self, "No TRFs", "Please upload TRF files first.")
             return
         
-        if not hasattr(self, 'batch_patients_data') or not self.batch_patients_data:
+        if not hasattr(self, 'bulk_patient_data_list') or not self.bulk_patient_data_list:
             QMessageBox.warning(self, "No Patients", "Please load patient data first using an Excel file.")
             return
         
@@ -3068,7 +3085,8 @@ Use null for fields not found. Return ONLY valid JSON."""
             best_match = None
             best_score = 0
             
-            for patient_name, patient_data in self.batch_patients_data.items():
+            patients_dict = self.get_trf_patients_dict()
+            for patient_name, patient_data in patients_dict.items():
                 p_name = patient_data.get('patient_info', {}).get('patient_name', '')
                 p_pin = patient_data.get('patient_info', {}).get('pin', '')
                 
@@ -3371,23 +3389,26 @@ Use null for fields not found. Return ONLY valid JSON."""
     
     def populate_trf_patient_list(self):
         """Populate the TRF patient list table"""
-        if not hasattr(self, 'batch_patients_data') or not self.batch_patients_data:
+        if not hasattr(self, 'bulk_patient_data_list') or not self.bulk_patient_data_list:
+            self.trf_patient_list.setRowCount(0)
             return
         
-        self.trf_patient_list.setRowCount(len(self.batch_patients_data))
+        patients_dict = self.get_trf_patients_dict()
+        self.trf_patient_list.setRowCount(len(patients_dict))
         
-        for i, (patient_name, data) in enumerate(self.batch_patients_data.items()):
+        for i, (patient_key, data) in enumerate(patients_dict.items()):
             p_info = data.get('patient_info', {})
             
             # Patient name
-            self.trf_patient_list.setItem(i, 0, QTableWidgetItem(p_info.get('patient_name', patient_name)))
+            name_item = QTableWidgetItem(p_info.get('patient_name', patient_key))
+            self.trf_patient_list.setItem(i, 0, name_item)
             
             # PIN
             self.trf_patient_list.setItem(i, 1, QTableWidgetItem(p_info.get('pin', '')))
             
             # TRF Status
             trf_mapping = getattr(self, 'patient_trf_mapping', {})
-            if patient_name in trf_mapping:
+            if patient_key in trf_mapping:
                 status_item = QTableWidgetItem("✅ Linked")
                 status_item.setForeground(QColor('#28a745'))
             else:
@@ -3395,8 +3416,9 @@ Use null for fields not found. Return ONLY valid JSON."""
                 status_item.setForeground(QColor('#6c757d'))
             self.trf_patient_list.setItem(i, 2, status_item)
             
-            # Store patient key for later reference
-            self.trf_patient_list.item(i, 0).setData(Qt.ItemDataRole.UserRole, patient_name)
+            # Store patient key and list index for later reference
+            self.trf_patient_list.item(i, 0).setData(Qt.ItemDataRole.UserRole, patient_key)
+            self.trf_patient_list.item(i, 0).setData(Qt.ItemDataRole.UserRole + 1, data.get('list_index', i))
     
     def on_trf_patient_selected(self):
         """Handle patient selection in TRF verification dialog"""
@@ -3406,11 +3428,13 @@ Use null for fields not found. Return ONLY valid JSON."""
         
         row = selected[0].row()
         patient_key = self.trf_patient_list.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        list_index = self.trf_patient_list.item(row, 0).data(Qt.ItemDataRole.UserRole + 1)
         
-        if not patient_key or patient_key not in self.batch_patients_data:
+        patients_dict = self.get_trf_patients_dict()
+        if not patient_key or patient_key not in patients_dict:
             return
         
-        patient_data = self.batch_patients_data[patient_key]
+        patient_data = patients_dict[patient_key]
         p_info = patient_data.get('patient_info', {})
         
         # Show patient details
@@ -3604,7 +3628,12 @@ Use null for fields not found. Return ONLY valid JSON."""
             return
         
         trf_info = trf_mapping[patient_key]
-        patient_data = self.batch_patients_data[patient_key]
+        patients_dict = self.get_trf_patients_dict()
+        if patient_key not in patients_dict:
+            QMessageBox.warning(self, "Error", "Patient data not found.")
+            return
+        
+        patient_data = patients_dict[patient_key]
         p_info = patient_data.get('patient_info', {})
         
         # Get patient data for comparison
@@ -3617,7 +3646,9 @@ Use null for fields not found. Return ONLY valid JSON."""
             'referring_clinician': p_info.get('referring_clinician', ''),
         }
         
-        use_ai = self.use_ai_checkbox.isChecked() if hasattr(self, 'use_ai_checkbox') else False
+        # Get extraction method from settings
+        extraction_method = self.settings.value('trf_extraction_method', 'easyocr')
+        use_ai = extraction_method == 'ollama'
         
         # Check if this is from bulk PDF
         if trf_info.get('is_bulk_pdf'):
@@ -3794,17 +3825,20 @@ Use null for fields not found. Return ONLY valid JSON."""
     
     def apply_bulk_trf_value(self, result, patient_key, table, row_idx):
         """Apply a TRF value in bulk verification context"""
-        if patient_key not in self.batch_patients_data:
+        patients_dict = self.get_trf_patients_dict()
+        if patient_key not in patients_dict:
+            return
+        
+        # Get the actual list index to update bulk_patient_data_list
+        list_index = patients_dict[patient_key].get('list_index')
+        if list_index is None or list_index >= len(self.bulk_patient_data_list):
             return
         
         field_key = result['field_key']
         trf_value = result['trf_value']
         
-        # Update the stored patient data
-        if 'patient_info' not in self.batch_patients_data[patient_key]:
-            self.batch_patients_data[patient_key]['patient_info'] = {}
-        
-        self.batch_patients_data[patient_key]['patient_info'][field_key] = trf_value
+        # Update the stored patient data in bulk_patient_data_list
+        self.bulk_patient_data_list[list_index]['patient_info'][field_key] = trf_value
         
         # Update table display
         table.item(row_idx, 1).setText(trf_value)
@@ -3851,7 +3885,7 @@ Use null for fields not found. Return ONLY valid JSON."""
             QMessageBox.warning(self, "No TRFs", "No TRF files to match. Upload some first.")
             return
         
-        if not hasattr(self, 'batch_patients_data') or not self.batch_patients_data:
+        if not hasattr(self, 'bulk_patient_data_list') or not self.bulk_patient_data_list:
             QMessageBox.warning(self, "No Patients", "No patient data loaded.")
             return
         
@@ -3884,7 +3918,8 @@ Use null for fields not found. Return ONLY valid JSON."""
             best_match = None
             best_score = 0
             
-            for patient_key, patient_data in self.batch_patients_data.items():
+            patients_dict = self.get_trf_patients_dict()
+            for patient_key, patient_data in patients_dict.items():
                 p_info = patient_data.get('patient_info', {})
                 p_name = p_info.get('patient_name', '')
                 p_pin = p_info.get('pin', '')
