@@ -283,10 +283,11 @@ class PGTADocxGenerator:
 
     def _populate_patient_table(self, table, data):
         """Standard Patient Info Population Logic"""
-        # Combine patient name and spouse name on same line
+        # Patient name and spouse name - spouse on new line
         patient_name = self._clean(data.get('patient_name'))
         spouse_name = self._clean(data.get('spouse_name'))
-        combined_name = f"{patient_name} {spouse_name}".strip() if spouse_name else patient_name
+        # Put spouse on new line if present
+        combined_name = f"{patient_name}\n{spouse_name}" if spouse_name else patient_name
         
         rows_map = [
             ("Patient name", combined_name, "PIN", "pin"),
@@ -412,6 +413,13 @@ class PGTADocxGenerator:
         result_desc = self._clean(embryo_data.get('result_description', ''))
         is_inconclusive = "INCONCLUSIVE" in result_summary.upper() or "INCONCLUSIVE" in result_desc.upper() or "INCONCLUSIVE" in interp.upper()
         
+        # Add inconclusive comment under CNV chart if present
+        if is_inconclusive:
+            inconclusive_comment = self._clean(embryo_data.get('inconclusive_comment', ''))
+            if inconclusive_comment:
+                comment_p = doc.add_paragraph(inconclusive_comment)
+                self._set_paragraph_font(comment_p, font_size=11)
+        
         if not is_inconclusive:
             chr_statuses = embryo_data.get('chromosome_statuses', {})
             mosaic_map = embryo_data.get('mosaic_percentages', {})
@@ -480,8 +488,11 @@ class PGTADocxGenerator:
             self._set_paragraph_font(p2, font_size=11)
 
     def _get_result_color_hex(self, res, interp):
-        """Standard Results Color Map"""
+        """Standard Results Color Map - Euploid=black, Aneuploid=red, Mosaic=blue"""
         i = str(interp).upper()
+        # Euploid = Black (check first for explicit euploid)
+        if "EUPLOID" in i and "ANEUPLOID" not in i:
+            return "#000000"
         if any(k in i for k in ["ANEUPLOID", "ABNORMAL"]): return "#FF0000"
         if any(k in i for k in ["MOSAIC", "MOSAICISM"]): return "#0000FF"
         return "#000000"
