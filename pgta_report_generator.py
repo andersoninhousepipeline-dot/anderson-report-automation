@@ -52,22 +52,33 @@ try:
     TESSERACT_AVAILABLE = True
 except ImportError:
     TESSERACT_AVAILABLE = False
-    print("Warning: pytesseract not found. TRF image verification may not work.")
+    # Silently skip - we primarily use EasyOCR now
 
 try:
     import pdfplumber
     PDFPLUMBER_AVAILABLE = True
 except ImportError:
     PDFPLUMBER_AVAILABLE = False
-    print("Warning: pdfplumber not found. TRF PDF verification may not work.")
+    print("Warning: pdfplumber not found. PDF features may be limited.")
 
 # EasyOCR - Simple, accurate, works offline (RECOMMENDED)
+# Note: EasyOCR requires PyTorch which may have issues on some Windows systems
 try:
     import easyocr
     EASYOCR_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError) as e:
     EASYOCR_AVAILABLE = False
-    print("Info: easyocr not found. Install for better OCR: pip install easyocr")
+    if "OSError" in str(type(e).__name__) or "DLL" in str(e):
+        print("Warning: EasyOCR/PyTorch failed to load (DLL error).")
+        print("         TRF verification will be disabled.")
+        print("         To fix: Install Visual C++ Redistributable from Microsoft")
+        print("         https://aka.ms/vs/17/release/vc_redist.x64.exe")
+    else:
+        print("Info: easyocr not found. TRF verification disabled.")
+except Exception as e:
+    EASYOCR_AVAILABLE = False
+    print(f"Warning: EasyOCR failed to load: {e}")
+    print("         TRF verification will be disabled.")
 
 # Ollama - Local LLM with vision (LLaVA model)
 try:
