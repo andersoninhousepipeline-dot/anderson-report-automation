@@ -65,23 +65,39 @@ echo [*] Upgrading pip...
 python -m pip install --upgrade pip
 echo.
 
-REM Install dependencies
-echo [*] Installing dependencies...
-echo     This may take 5-15 minutes. Please wait...
+REM Install core dependencies first (without easyocr)
+echo [*] Installing core dependencies...
 echo.
-python -m pip install -r requirements.txt
+python -m pip install PyQt6 reportlab PyPDF2 pdfplumber python-docx pandas openpyxl pyarrow Pillow numpy requests
 
 if errorlevel 1 (
     echo.
-    echo [ERROR] Failed to install dependencies
-    echo.
-    echo Try:
-    echo   1. Check internet connection
-    echo   2. Run as Administrator
-    echo   3. Delete .venv folder and try again
-    echo.
+    echo [ERROR] Failed to install core dependencies
     pause
     exit /b 1
+)
+echo [OK] Core packages installed
+echo.
+
+REM Try to install EasyOCR (optional, may fail on some systems)
+echo [*] Installing EasyOCR (optional, for TRF verification)...
+echo     This may take a few minutes...
+echo.
+python -m pip install easyocr
+
+if errorlevel 1 (
+    echo.
+    echo [!] EasyOCR installation had issues.
+    echo     TRF verification will be disabled, but the app will work.
+    echo.
+    echo     To enable TRF verification later:
+    echo       1. Install Visual C++ Redistributable:
+    echo          https://aka.ms/vs/17/release/vc_redist.x64.exe
+    echo       2. Delete .venv folder
+    echo       3. Run setup.bat again
+    echo.
+) else (
+    echo [OK] EasyOCR installed
 )
 
 echo.
@@ -90,6 +106,10 @@ echo   SETUP COMPLETE!
 echo ===========================================
 echo.
 echo To run the application, double-click: launch.bat
+echo.
+echo NOTE: If you see PyTorch/DLL errors when running:
+echo   Install Visual C++ Redistributable from:
+echo   https://aka.ms/vs/17/release/vc_redist.x64.exe
 echo.
 pause
 

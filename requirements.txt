@@ -23,13 +23,12 @@ pyarrow>=14.0.0
 Pillow>=10.0.0
 numpy>=1.24.0
 
-# OCR for TRF Verification (EasyOCR - recommended, works offline)
-easyocr>=1.7.0
-torch>=2.0.0
-torchvision>=0.15.0
-
-# HTTP requests (for optional Ollama AI integration)
+# HTTP requests
 requests>=2.31.0
 
-# Optional: Tesseract OCR (backup, requires system installation)
-# pytesseract>=0.3.10
+# OCR for TRF Verification (OPTIONAL)
+# Note: EasyOCR requires PyTorch which can have issues on some Windows systems
+# If PyTorch fails to load, the app will still work but TRF verification is disabled
+# To fix PyTorch DLL errors on Windows, install Visual C++ Redistributable:
+# https://aka.ms/vs/17/release/vc_redist.x64.exe
+easyocr>=1.7.0
