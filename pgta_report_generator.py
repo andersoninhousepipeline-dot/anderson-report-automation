@@ -2947,6 +2947,88 @@ Use null for fields not found. Return ONLY valid JSON."""
         except Exception as e:
             return None, f"Error extracting text: {str(e)}"
     
+    def parse_extracted_trf_text(self, raw_text):
+        """Parse extracted TRF text and return structured data"""
+        import re
+        
+        data = {
+            'patient_name': '',
+            'hospital_clinic': '',
+            'pin': '',
+            'biopsy_date': '',
+            'sample_receipt_date': '',
+            'referring_clinician': '',
+        }
+        
+        if not raw_text:
+            return data
+        
+        text = raw_text.lower()
+        lines = raw_text.split('\n')
+        
+        # Common patterns for TRF fields
+        patterns = {
+            'patient_name': [
+                r'patient\s*name\s*[:\-]?\s*(.+?)(?:\n|$)',
+                r'name\s*[:\-]?\s*(.+?)(?:\n|$)',
+                r'patient\s*[:\-]?\s*(.+?)(?:\n|$)',
+            ],
+            'hospital_clinic': [
+                r'hospital\s*[/&]?\s*clinic\s*[:\-]?\s*(.+?)(?:\n|$)',
+                r'center\s*name\s*[:\-]?\s*(.+?)(?:\n|$)',
+                r'clinic\s*[:\-]?\s*(.+?)(?:\n|$)',
+                r'hospital\s*[:\-]?\s*(.+?)(?:\n|$)',
+                r'fertility\s*(?:center|centre|clinic)\s*[:\-]?\s*(.+?)(?:\n|$)',
+            ],
+            'pin': [
+                r'pin\s*[:\-]?\s*([A-Z0-9]+)',
+                r'sample\s*id\s*[:\-]?\s*([A-Z0-9]+)',
+                r'patient\s*id\s*[:\-]?\s*([A-Z0-9]+)',
+                r'(?:^|\n)([A-Z]{2,4}\d{8,})',  # Pattern like AND25150117496
+            ],
+            'biopsy_date': [
+                r'(?:date\s*of\s*)?biopsy\s*(?:date)?\s*[:\-]?\s*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
+                r'biopsy\s*[:\-]?\s*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
+            ],
+            'sample_receipt_date': [
+                r'(?:sample\s*)?receipt\s*(?:date)?\s*[:\-]?\s*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
+                r'(?:date\s*)?received\s*[:\-]?\s*(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4})',
+            ],
+            'referring_clinician': [
+                r'referring\s*(?:clinician|doctor|physician)\s*[:\-]?\s*(?:dr\.?\s*)?(.+?)(?:\n|$)',
+                r'clinician\s*[:\-]?\s*(?:dr\.?\s*)?(.+?)(?:\n|$)',
+                r'doctor\s*[:\-]?\s*(?:dr\.?\s*)?(.+?)(?:\n|$)',
+            ],
+        }
+        
+        # Try to find each field
+        for field_key, field_patterns in patterns.items():
+            for pattern in field_patterns:
+                match = re.search(pattern, raw_text, re.IGNORECASE | re.MULTILINE)
+                if match:
+                    value = match.group(1).strip()
+                    # Clean up the value
+                    value = re.sub(r'\s+', ' ', value)
+                    # Remove trailing punctuation
+                    value = value.rstrip(':,-.')
+                    if value and len(value) > 1:
+                        data[field_key] = value
+                        break
+        
+        # Special handling for dates - normalize format
+        for date_field in ['biopsy_date', 'sample_receipt_date']:
+            if data[date_field]:
+                # Try to normalize date format to DD/MM/YYYY
+                date_val = data[date_field]
+                date_match = re.match(r'(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{2,4})', date_val)
+                if date_match:
+                    d, m, y = date_match.groups()
+                    if len(y) == 2:
+                        y = '20' + y
+                    data[date_field] = f"{d.zfill(2)}/{m.zfill(2)}/{y}"
+        
+        return data
+    
     def verify_all_bulk_trf(self):
         """Verify all uploaded TRFs against all patients in the batch"""
         # Check if we have bulk PDF or individual files
@@ -3915,7 +3997,12 @@ Use null for fields not found. Return ONLY valid JSON."""
                 return
         
         # Show comparison dialog (modified for bulk context)
-        self.show_bulk_trf_comparison_dialog(results, patient_key)
+        try:
+            self.show_bulk_trf_comparison_dialog(results, patient_key)
+        except Exception as e:
+            QMessageBox.critical(self, "Dialog Error", f"Failed to show comparison dialog: {str(e)}")
+            import traceback
+            traceback.print_exc()
     
     def compare_trf_to_patient(self, trf_data, patient_data):
         """Compare TRF extracted data to patient data and return comparison results"""
