@@ -772,6 +772,10 @@ class PGTAReportGeneratorApp(QMainWindow):
                     chr_statuses[str(k)] = inputs['status'].currentText()
                     mosaic_percentages[str(k)] = inputs['mosaic'].text()
 
+                # Get inconclusive comment
+                inconclusive_comment_widget = form_dict.get('inconclusive_comment')
+                inconclusive_comment = inconclusive_comment_widget.toPlainText() if inconclusive_comment_widget else ''
+
                 e_data.append({
                     'embryo_id': embryo_id,
                     'result_summary': res_sum, 
@@ -781,7 +785,8 @@ class PGTAReportGeneratorApp(QMainWindow):
                     'mtcopy': mtcopy,
                     'cnv_image_path': img_path,
                     'chromosome_statuses': chr_statuses,
-                    'mosaic_percentages': mosaic_percentages
+                    'mosaic_percentages': mosaic_percentages,
+                    'inconclusive_comment': inconclusive_comment
                 })
         else:
             # Fallback if no forms (initial state)
@@ -937,6 +942,13 @@ class PGTAReportGeneratorApp(QMainWindow):
         img_layout.addStretch()
         form.addRow("CNV Chart:", img_layout)
     
+        # Inconclusive Comment field (appears under CNV chart when result is Inconclusive)
+        inconclusive_comment = QTextEdit()
+        inconclusive_comment.setPlaceholderText("Enter comment for inconclusive result (appears under CNV chart)")
+        inconclusive_comment.setMaximumHeight(60)
+        inconclusive_comment.textChanged.connect(self.update_preview)
+        form.addRow("Inconclusive Comment:", inconclusive_comment)
+    
         # Chromosome status section using Grid
         chr_group = QGroupBox("Chromosome Details")
         chr_grid = QGridLayout()
@@ -987,7 +999,8 @@ class PGTAReportGeneratorApp(QMainWindow):
             'autosomes': autosomes,
             'sex_chromosomes': sex_chromosomes,
             'chr_inputs': chr_inputs,
-            'chart_path_label': img_path_label
+            'chart_path_label': img_path_label,
+            'inconclusive_comment': inconclusive_comment
         }
     
     def create_bulk_upload_tab(self):
@@ -1559,7 +1572,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                 
                 <table class="patient-table">
                     <tr>
-                        <td><b>Patient Name :</b> {p_info.get('patient_name', '')} {p_info.get('spouse_name', '')}</td>
+                        <td><b>Patient Name :</b> {p_info.get('patient_name', '')}<br/>{p_info.get('spouse_name', '')}</td>
                         <td><b>PIN :</b> {p_info.get('pin', '')}</td>
                     </tr>
                     <tr>
@@ -5386,6 +5399,14 @@ Use null for fields not found. Return ONLY valid JSON."""
             image_widget.setLayout(image_layout)
             embryo_form.addRow("CNV Image:", image_widget)
 
+            # Inconclusive Comment field (appears under CNV chart when result is Inconclusive)
+            e_inconclusive_comment = QTextEdit()
+            e_inconclusive_comment.setPlaceholderText("Enter comment for inconclusive result (appears under CNV chart)")
+            e_inconclusive_comment.setMaximumHeight(60)
+            e_inconclusive_comment.setText(embryo.get('inconclusive_comment', ''))
+            e_inconclusive_comment.textChanged.connect(self.update_batch_preview)
+            embryo_form.addRow("Inconclusive Comment:", e_inconclusive_comment)
+
             # Chromosome status section using Grid (Same as manual form)
             chr_group = QGroupBox("Chromosome Details")
             chr_grid = QGridLayout()
@@ -5449,7 +5470,8 @@ Use null for fields not found. Return ONLY valid JSON."""
                 'mtcopy': e_mtcopy,
                 'image_label': e_image_label,
                 'image_path': e_image_path,
-                'chr_inputs': chr_inputs
+                'chr_inputs': chr_inputs,
+                'inconclusive_comment': e_inconclusive_comment
             })
     
         self.batch_editor_layout.addWidget(embryos_group)
@@ -5524,6 +5546,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                 data['embryos'][i]['interpretation'] = editor['interpretation'].currentText()
                 data['embryos'][i]['mtcopy'] = editor['mtcopy'].text()
                 data['embryos'][i]['cnv_image_path'] = editor['image_path']
+                data['embryos'][i]['inconclusive_comment'] = editor['inconclusive_comment'].toPlainText() if 'inconclusive_comment' in editor else ''
                 
                 # Update chromosome data
                 if 'chr_inputs' in editor:
@@ -5635,7 +5658,8 @@ Use null for fields not found. Return ONLY valid JSON."""
                 'mtcopy': editor['mtcopy'].text(),
                 'cnv_image_path': editor['image_path'],
                 'chromosome_statuses': {ch: inp['status'].currentText() for ch, inp in editor.get('chr_inputs', {}).items()},
-                'mosaic_percentages': {ch: inp['mosaic'].text() for ch, inp in editor.get('chr_inputs', {}).items()}
+                'mosaic_percentages': {ch: inp['mosaic'].text() for ch, inp in editor.get('chr_inputs', {}).items()},
+                'inconclusive_comment': editor['inconclusive_comment'].toPlainText() if 'inconclusive_comment' in editor else ''
             })
 
         import tempfile

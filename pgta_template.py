@@ -504,10 +504,11 @@ class PGTAReportTemplate:
         # Prepare data with Paragraph wrapping to prevent overlap
         # Standard widths for cover page: [85, 12, 146, 85, 12, 150] Total: 490pt
         
-        # Combine patient name and spouse name on same line
+        # Patient name and spouse name - spouse on new line
         patient_name = self._clean(patient_data.get('patient_name'))
         spouse_name = self._clean(patient_data.get('spouse_name'))
-        combined_name = f"{patient_name} {spouse_name}".strip() if spouse_name else patient_name
+        # Put spouse on new line with <br/> if present
+        combined_name = f"{patient_name}<br/>{spouse_name}" if spouse_name else patient_name
         
         data = [
             [self._wrap_text('<b>Patient name</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{combined_name}</b>", max_width=140), self._wrap_text('<b>PIN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('pin'))}</b>", max_width=144)],
@@ -654,10 +655,11 @@ class PGTAReportTemplate:
             if not text: return ""
             return Paragraph(str(text), self.styles['PGTABannerValueText'])
 
-        # Combine patient name and spouse name on same line
+        # Patient name and spouse name - spouse on new line
         patient_name = self._clean(patient_data.get('patient_name'))
         spouse_name = self._clean(patient_data.get('spouse_name'))
-        combined_name = f"{patient_name} {spouse_name}".strip() if spouse_name else patient_name
+        # Put spouse on new line with <br/> if present
+        combined_name = f"{patient_name}<br/>{spouse_name}" if spouse_name else patient_name
 
         info_data = [[
             self._wrap_label('Patient name'),
@@ -799,6 +801,17 @@ class PGTAReportTemplate:
         result_summary = self._clean(embryo_data.get('result_summary', ''))
         result_desc = self._clean(embryo_data.get('result_description', ''))
         is_inconclusive = "INCONCLUSIVE" in result_summary.upper() or "INCONCLUSIVE" in result_desc.upper() or "INCONCLUSIVE" in interp_text.upper()
+        
+        # Add inconclusive comment under CNV chart if present
+        if is_inconclusive:
+            inconclusive_comment = self._clean(embryo_data.get('inconclusive_comment', ''))
+            if inconclusive_comment:
+                comment_para = Paragraph(
+                    f"{inconclusive_comment}",
+                    self.styles['PGTABodyText']
+                )
+                elements.append(comment_para)
+                elements.append(Spacer(1, 12))
         
         if not is_inconclusive:
             cnv_table = self._create_cnv_table(embryo_data)
@@ -980,17 +993,21 @@ class PGTAReportTemplate:
         return KeepTogether(header_table)
 
     def _get_result_color(self, result_text, interpretation_text):
-        """Determine if text should be Red (Aneuploid), Blue (Mosaic) or Black"""
+        """Determine if text should be Red (Aneuploid), Blue (Mosaic) or Black (Euploid)"""
         res_up = result_text.upper() if result_text else ""
         int_up = interpretation_text.upper() if interpretation_text else ""
         
-        # Red Logic
+        # Euploid = Black (check first for explicit euploid)
+        if "EUPLOID" in int_up and "ANEUPLOID" not in int_up:
+            return colors.black
+        
+        # Red Logic - Aneuploid and related abnormalities
         red_keywords = ["MONOSOMY", "TRISOMY", "SEGMENTAL GAIN", "SEGMENTAL LOSS", 
                         "MULTIPLE CHROMOSOMAL ABNORMALITIES", "ANEUPLOID", "CHAOTIC EMBRYO"]
         if any(kw in res_up for kw in red_keywords) or any(kw in int_up for kw in red_keywords):
             return colors.red
             
-        # Blue Logic
+        # Blue Logic - Mosaic
         blue_keywords = ["MOSAIC CHROMOSOME COMPLEMENT", "LOW LEVEL MOSAIC", 
                          "HIGH LEVEL MOSAIC", "COMPLEX MOSAIC", "MULTIPLE MOSAIC"]
         if any(kw in res_up for kw in blue_keywords) or any(kw in int_up for kw in blue_keywords):
