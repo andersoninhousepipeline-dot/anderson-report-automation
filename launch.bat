@@ -18,8 +18,7 @@ if errorlevel 1 (
         echo Please install Python from https://www.python.org/downloads/
         echo Make sure to check "Add Python to PATH" during installation.
         echo.
-        pause
-        exit /b 1
+        goto :end
     )
     set PYCMD=py
 ) else (
@@ -36,8 +35,7 @@ if not exist ".venv\Scripts\python.exe" (
     %PYCMD% -m venv .venv
     if errorlevel 1 (
         echo [ERROR] Failed to create virtual environment
-        pause
-        exit /b 1
+        goto :end
     )
     echo [OK] Created
     echo.
@@ -46,6 +44,10 @@ if not exist ".venv\Scripts\python.exe" (
 REM Activate virtual environment
 echo [*] Activating environment...
 call .venv\Scripts\activate.bat
+if errorlevel 1 (
+    echo [ERROR] Failed to activate environment
+    goto :end
+)
 echo [OK] Activated
 echo.
 
@@ -60,8 +62,7 @@ if errorlevel 1 (
     if errorlevel 1 (
         echo.
         echo [ERROR] Failed to install core dependencies
-        pause
-        exit /b 1
+        goto :end
     )
     echo.
     echo [*] Installing EasyOCR (optional)...
@@ -79,14 +80,12 @@ echo.
 REM Run the application
 python pgta_report_generator.py
 
-if errorlevel 1 (
-    echo.
-    echo [!] Application exited with error
-    echo.
-)
-
 echo.
+echo ===========================================
 echo Application closed.
-pause
+echo ===========================================
 
-
+:end
+echo.
+echo Press any key to exit...
+pause >nul
