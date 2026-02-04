@@ -2374,7 +2374,13 @@ class PGTAReportGeneratorApp(QMainWindow):
         if not hasattr(self, '_easyocr_reader'):
             if EASYOCR_AVAILABLE:
                 try:
-                    self._easyocr_reader = easyocr.Reader(['en'], gpu=False)  # CPU mode for compatibility
+                    # Use GPU if available, fall back to CPU
+                    import torch
+                    use_gpu = torch.cuda.is_available()
+                except:
+                    use_gpu = False
+                try:
+                    self._easyocr_reader = easyocr.Reader(['en'], gpu=use_gpu)
                 except Exception as e:
                     print(f"EasyOCR init error: {e}")
                     self._easyocr_reader = None
@@ -2394,26 +2400,29 @@ class PGTAReportGeneratorApp(QMainWindow):
             
             file_ext = os.path.splitext(file_path)[1].lower()
             
-            # For PDFs, convert to image first
+            # For PDFs, convert to image first with HIGH resolution for better OCR
             if file_ext == '.pdf':
                 if PDFPLUMBER_AVAILABLE:
                     with pdfplumber.open(file_path) as pdf:
                         if pdf.pages:
                             page = pdf.pages[0]
-                            img = page.to_image(resolution=200)
+                            # Higher resolution = better OCR accuracy
+                            img = page.to_image(resolution=300)
                             import io
                             img_buffer = io.BytesIO()
                             img.save(img_buffer, format='PNG')
                             img_buffer.seek(0)
                             # EasyOCR can read from bytes
-                            results = reader.readtext(img_buffer.getvalue())
+                            results = reader.readtext(img_buffer.getvalue(), detail=1, paragraph=False)
                 else:
                     return None, "PDF processing requires pdfplumber"
             else:
-                results = reader.readtext(file_path)
+                results = reader.readtext(file_path, detail=1, paragraph=False)
             
-            # Combine all detected text
-            text_lines = [item[1] for item in results]
+            # Combine all detected text - sort by vertical position for better reading order
+            # results format: [[bbox, text, confidence], ...]
+            sorted_results = sorted(results, key=lambda x: (x[0][0][1], x[0][0][0]))  # Sort by Y then X
+            text_lines = [item[1] for item in sorted_results if item[2] > 0.3]  # Filter low confidence
             full_text = '\n'.join(text_lines)
             
             return full_text, None
@@ -3192,86 +3201,20 @@ Use null for fields not found. Return ONLY valid JSON."""
         header.setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px;")
         layout.addWidget(header)
         
-        # OCR/AI Settings
-        settings_group = QGroupBox("🔧 Extraction Settings (All Open Source - No API Keys Required)")
-        settings_layout = QVBoxLayout()
-        settings_group.setLayout(settings_layout)
+        # Simple status info - EasyOCR only
+        status_group = QGroupBox("🔧 OCR Engine: EasyOCR (Offline)")
+        status_layout = QHBoxLayout()
+        status_group.setLayout(status_layout)
         
-        # Method selection
-        method_layout = QHBoxLayout()
-        method_layout.addWidget(QLabel("Extraction Method:"))
-        
-        self.extraction_method_combo = ClickOnlyComboBox()
-        methods = []
         if EASYOCR_AVAILABLE:
-            methods.append(("EasyOCR (Recommended - Offline)", "easyocr"))
-        if OLLAMA_AVAILABLE:
-            methods.append(("Ollama LLaVA (Local AI - Best Accuracy)", "ollama"))
-        if TESSERACT_AVAILABLE:
-            methods.append(("Tesseract (Basic OCR)", "tesseract"))
-        
-        if not methods:
-            methods.append(("No OCR available - Install easyocr", "none"))
-        
-        for display, value in methods:
-            self.extraction_method_combo.addItem(display, value)
-        
-        # Set current from settings
-        current_method = self.settings.value('trf_extraction_method', 'easyocr')
-        for i in range(self.extraction_method_combo.count()):
-            if self.extraction_method_combo.itemData(i) == current_method:
-                self.extraction_method_combo.setCurrentIndex(i)
-                break
-        
-        self.extraction_method_combo.currentIndexChanged.connect(
-            lambda idx: self.settings.setValue('trf_extraction_method', self.extraction_method_combo.itemData(idx))
-        )
-        method_layout.addWidget(self.extraction_method_combo)
-        method_layout.addStretch()
-        settings_layout.addLayout(method_layout)
-        
-        # Ollama settings (if available)
-        if OLLAMA_AVAILABLE:
-            ollama_layout = QHBoxLayout()
-            ollama_layout.addWidget(QLabel("Ollama URL:"))
-            self.ollama_url_input = QLineEdit()
-            self.ollama_url_input.setText(self.settings.value('ollama_url', 'http://localhost:11434'))
-            self.ollama_url_input.setPlaceholderText("http://localhost:11434")
-            self.ollama_url_input.textChanged.connect(lambda t: self.settings.setValue('ollama_url', t))
-            ollama_layout.addWidget(self.ollama_url_input)
-            
-            ollama_layout.addWidget(QLabel("Model:"))
-            self.ollama_model_input = QLineEdit()
-            self.ollama_model_input.setText(self.settings.value('ollama_vision_model', 'llava'))
-            self.ollama_model_input.setPlaceholderText("llava, llava:13b, bakllava")
-            self.ollama_model_input.textChanged.connect(lambda t: self.settings.setValue('ollama_vision_model', t))
-            ollama_layout.addWidget(self.ollama_model_input)
-            
-            test_ollama_btn = QPushButton("Test Connection")
-            test_ollama_btn.clicked.connect(self.test_ollama_connection)
-            ollama_layout.addWidget(test_ollama_btn)
-            
-            settings_layout.addLayout(ollama_layout)
-        
-        # Status info
-        status_info = QLabel()
-        status_parts = []
-        if EASYOCR_AVAILABLE:
-            status_parts.append("✅ EasyOCR")
+            status_label = QLabel("✅ EasyOCR Ready - High accuracy offline text extraction")
+            status_label.setStyleSheet("color: #28a745; font-weight: bold;")
         else:
-            status_parts.append("❌ EasyOCR (pip install easyocr)")
-        if OLLAMA_AVAILABLE:
-            status_parts.append("✅ Ollama support")
-        if TESSERACT_AVAILABLE:
-            status_parts.append("✅ Tesseract")
-        else:
-            status_parts.append("❌ Tesseract")
+            status_label = QLabel("❌ EasyOCR not installed. Run: pip install easyocr")
+            status_label.setStyleSheet("color: #dc3545; font-weight: bold;")
+        status_layout.addWidget(status_label)
         
-        status_info.setText("Available: " + " | ".join(status_parts))
-        status_info.setStyleSheet("color: #666; font-size: 11px; padding: 5px;")
-        settings_layout.addWidget(status_info)
-        
-        layout.addWidget(settings_group)
+        layout.addWidget(status_group)
         
         # Splitter for list and details
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -3322,17 +3265,24 @@ Use null for fields not found. Return ONLY valid JSON."""
         
         layout.addWidget(splitter)
         
+        # Bulk TRF status label
+        self.bulk_trf_status_label = QLabel("No bulk TRF uploaded")
+        self.bulk_trf_status_label.setStyleSheet("color: #666; font-style: italic; padding: 5px;")
+        layout.addWidget(self.bulk_trf_status_label)
+        
         # Bottom buttons
         bottom_layout = QHBoxLayout()
         
-        bulk_upload_btn = QPushButton("📁 Upload Multiple TRFs")
-        bulk_upload_btn.clicked.connect(self.upload_bulk_trf_dialog)
-        bulk_upload_btn.setStyleSheet("padding: 8px 16px;")
-        bottom_layout.addWidget(bulk_upload_btn)
+        bulk_pdf_btn = QPushButton("📑 Upload Bulk TRF PDF")
+        bulk_pdf_btn.clicked.connect(self.upload_bulk_trf_pdf_for_dialog)
+        bulk_pdf_btn.setStyleSheet("padding: 8px 16px; background-color: #17a2b8; color: white;")
+        bulk_pdf_btn.setToolTip("Upload a single PDF containing all TRFs (one page per patient)")
+        bottom_layout.addWidget(bulk_pdf_btn)
         
-        auto_match_btn = QPushButton("🔄 Auto-Match All TRFs")
-        auto_match_btn.clicked.connect(self.auto_match_bulk_trfs)
+        auto_match_btn = QPushButton("🔄 Auto-Match All")
+        auto_match_btn.clicked.connect(self.auto_match_bulk_pdf_pages)
         auto_match_btn.setStyleSheet("padding: 8px 16px; background-color: #007bff; color: white;")
+        auto_match_btn.setToolTip("Automatically match PDF pages to patients using OCR")
         bottom_layout.addWidget(auto_match_btn)
         
         bottom_layout.addStretch()
@@ -3348,6 +3298,179 @@ Use null for fields not found. Return ONLY valid JSON."""
         self.populate_trf_patient_list()
         
         dialog.exec()
+    
+    def upload_bulk_trf_pdf_for_dialog(self):
+        """Upload a bulk TRF PDF from the TRF Manager dialog"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Bulk TRF PDF (All TRFs in one file)",
+            "",
+            "PDF Files (*.pdf)"
+        )
+        
+        if not file_path:
+            return
+        
+        if not PDFPLUMBER_AVAILABLE:
+            QMessageBox.warning(self, "Error", "PDF processing requires pdfplumber. Install: pip install pdfplumber")
+            return
+        
+        try:
+            with pdfplumber.open(file_path) as pdf:
+                num_pages = len(pdf.pages)
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to open PDF: {str(e)}")
+            return
+        
+        if num_pages == 0:
+            QMessageBox.warning(self, "Error", "PDF has no pages")
+            return
+        
+        # Store the bulk PDF info
+        self.dialog_bulk_pdf_path = file_path
+        self.dialog_bulk_pdf_pages = num_pages
+        
+        # Update status label
+        self.bulk_trf_status_label.setText(f"📄 {os.path.basename(file_path)} - {num_pages} pages loaded")
+        self.bulk_trf_status_label.setStyleSheet("color: #28a745; font-weight: bold; padding: 5px;")
+        
+        QMessageBox.information(
+            self,
+            "Bulk TRF Loaded",
+            f"Loaded: {os.path.basename(file_path)}\n"
+            f"Pages: {num_pages}\n\n"
+            f"Click 'Auto-Match All' to automatically match pages to patients."
+        )
+    
+    def auto_match_bulk_pdf_pages(self):
+        """Auto-match bulk PDF pages to patients using EasyOCR"""
+        if not hasattr(self, 'dialog_bulk_pdf_path') or not self.dialog_bulk_pdf_path:
+            QMessageBox.warning(self, "No PDF", "Please upload a bulk TRF PDF first.")
+            return
+        
+        if not hasattr(self, 'bulk_patient_data_list') or not self.bulk_patient_data_list:
+            QMessageBox.warning(self, "No Patients", "No patient data loaded.")
+            return
+        
+        if not EASYOCR_AVAILABLE:
+            QMessageBox.warning(self, "Error", "EasyOCR is required. Install: pip install easyocr")
+            return
+        
+        num_pages = self.dialog_bulk_pdf_pages
+        patients_dict = self.get_trf_patients_dict()
+        
+        # Progress dialog
+        progress = QProgressDialog("Processing TRF pages...", "Cancel", 0, num_pages, self)
+        progress.setWindowTitle("Auto-Matching TRFs")
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.show()
+        
+        matched_count = 0
+        results_log = []
+        
+        try:
+            with pdfplumber.open(self.dialog_bulk_pdf_path) as pdf:
+                for page_idx in range(num_pages):
+                    if progress.wasCanceled():
+                        break
+                    
+                    progress.setValue(page_idx)
+                    progress.setLabelText(f"Processing page {page_idx + 1} of {num_pages}...")
+                    QApplication.processEvents()
+                    
+                    # Extract text from this page
+                    page = pdf.pages[page_idx]
+                    
+                    # First try direct text extraction (faster)
+                    page_text = page.extract_text() or ""
+                    
+                    # If no text, use OCR
+                    if len(page_text.strip()) < 50:
+                        try:
+                            reader = self.init_easyocr_reader()
+                            if reader:
+                                img = page.to_image(resolution=300)
+                                import io
+                                img_buffer = io.BytesIO()
+                                img.save(img_buffer, format='PNG')
+                                img_buffer.seek(0)
+                                ocr_results = reader.readtext(img_buffer.getvalue(), detail=0)
+                                page_text = ' '.join(ocr_results)
+                        except Exception as e:
+                            results_log.append(f"Page {page_idx + 1}: OCR error - {str(e)}")
+                            continue
+                    
+                    if not page_text.strip():
+                        results_log.append(f"Page {page_idx + 1}: No text found")
+                        continue
+                    
+                    # Find best matching patient
+                    best_match = None
+                    best_score = 0
+                    
+                    for patient_key, patient_data in patients_dict.items():
+                        p_info = patient_data.get('patient_info', {})
+                        p_name = p_info.get('patient_name', '')
+                        p_pin = p_info.get('pin', '')
+                        
+                        score = 0
+                        page_text_lower = page_text.lower()
+                        
+                        # Check name match
+                        if p_name:
+                            name_parts = p_name.lower().split()
+                            for part in name_parts:
+                                if len(part) > 2 and part in page_text_lower:
+                                    score += 30
+                        
+                        # Check PIN match (exact or partial)
+                        if p_pin:
+                            if p_pin.lower() in page_text_lower:
+                                score += 50
+                            elif any(part in page_text_lower for part in p_pin.lower().split() if len(part) > 3):
+                                score += 25
+                        
+                        if score > best_score:
+                            best_score = score
+                            best_match = patient_key
+                    
+                    # Match if score is good enough
+                    if best_match and best_score >= 30:
+                        if not hasattr(self, 'patient_trf_mapping'):
+                            self.patient_trf_mapping = {}
+                        
+                        self.patient_trf_mapping[best_match] = {
+                            'trf_path': self.dialog_bulk_pdf_path,
+                            'trf_page': page_idx,
+                            'trf_data': None,
+                            'match_score': best_score,
+                            'is_bulk_pdf': True
+                        }
+                        matched_count += 1
+                        
+                        # Get display name
+                        p_name = patients_dict[best_match].get('patient_info', {}).get('patient_name', best_match)
+                        results_log.append(f"Page {page_idx + 1}: ✅ Matched to {p_name} (score: {best_score})")
+                    else:
+                        results_log.append(f"Page {page_idx + 1}: ❌ No match found (best score: {best_score})")
+        
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Processing error: {str(e)}")
+            return
+        finally:
+            progress.setValue(num_pages)
+        
+        # Update the patient list
+        self.populate_trf_patient_list()
+        
+        # Show results
+        msg = f"✅ Matched {matched_count} of {num_pages} pages to patients.\n\n"
+        msg += "Results:\n" + "\n".join(results_log[:15])
+        if len(results_log) > 15:
+            msg += f"\n... and {len(results_log) - 15} more"
+        
+        QMessageBox.information(self, "Auto-Match Complete", msg)
     
     def test_ollama_connection(self):
         """Test connection to Ollama server"""
