@@ -855,8 +855,10 @@ class PGTAReportGeneratorApp(QMainWindow):
             
             if not self.summary_table.cellWidget(r, 2): # Interpretation - with colors
                 combo = ClickOnlyComboBox()
-                # Color scheme: NA=Black, Chaotic=Red, Mosaics=Blue
+                # Color scheme: Euploid=Black, Aneuploid=Red, Mosaics=Blue
                 add_colored_items_to_combo(combo, [
+                    ("Euploid", "black"),
+                    ("Aneuploid", "red"),
                     ("NA", "black"),
                     ("Chaotic embryo", "red"),
                     ("Low level mosaic", "blue"),
@@ -5357,6 +5359,8 @@ Use null for fields not found. Return ONLY valid JSON."""
             # Interpretation dropdown with colors
             e_interp = ClickOnlyComboBox()
             add_colored_items_to_combo(e_interp, [
+                ("Euploid", "black"),
+                ("Aneuploid", "red"),
                 ("NA", "black"),
                 ("Chaotic embryo", "red"),
                 ("Low level mosaic", "blue"),
