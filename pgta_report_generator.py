@@ -507,6 +507,14 @@ class PGTAReportGeneratorApp(QMainWindow):
         # We'll update rows in update_embryo_forms
         summary_layout.addWidget(self.summary_table)
         
+        # Results Summary Comment (optional, appears below results summary table on page 1)
+        self.results_summary_comment = QTextEdit()
+        self.results_summary_comment.setPlaceholderText("Optional comment for results summary section (appears below table on page 1)")
+        self.results_summary_comment.setMaximumHeight(60)
+        self.results_summary_comment.textChanged.connect(self.update_preview)
+        summary_layout.addWidget(QLabel("Results Summary Comment:"))
+        summary_layout.addWidget(self.results_summary_comment)
+        
         # Embryo Management Group (Page 4+)
         embryo_group = QGroupBox("Page 4+: Embryo Details (Detail View)")
         embryo_layout = QVBoxLayout()
@@ -705,7 +713,8 @@ class PGTAReportGeneratorApp(QMainWindow):
             'sample_receipt_date': self.sample_receipt_date_input.text(),
             'biopsy_performed_by': self.biopsy_performed_by_input.toPlainText(),
             'report_date': self.report_date_input.text(),
-            'indication': self.indication_input.toPlainText()
+            'indication': self.indication_input.toPlainText(),
+            'results_summary_comment': self.results_summary_comment.toPlainText() if hasattr(self, 'results_summary_comment') else ''
         }
         
         # Gather Embryo Data - Correctly iterating through all forms
@@ -714,26 +723,24 @@ class PGTAReportGeneratorApp(QMainWindow):
         # First check if we have data in detailed forms
         if hasattr(self, 'embryo_forms') and self.embryo_forms:
             for idx, form_dict in enumerate(self.embryo_forms):
-                # We need to access widgets from the form_dict if stored, or find them
-                # create_embryo_form DOES NOT currently return widget references, just layout structure?
-                # Wait, I need to check create_embryo_form implementation. 
-                # It currently returns {'group': group}. It needs to return input widgets to harvest data.
+                # Summary table Sample (for page 1 Results Summary)
+                summary_sample_id = f"PS{idx+1}"
                 
-                # RECOVERY STRATEGY: 
-                # Since create_embryo_form logic is inside this class, I should verify what it returns.
-                # Assuming I fix create_embryo_form to return references, here is how we harvest:
+                # Embryo Details ID (for page 4+ Embryo Details) - from embryo form
+                detail_embryo_id = f"PS{idx+1}"
+                embryo_id_widget = form_dict.get('embryo_id_input')
+                if embryo_id_widget:
+                    detail_embryo_id = embryo_id_widget.text() or f"PS{idx+1}"
                 
-                embryo_id = f"PS{idx+1}"
-                
-                # Try to get data from summary table first for high-level info
+                # Try to get data from summary table for page 1 info
                 res_sum = ""
                 interp = "NA"
                 mtcopy = "NA"
                 
                 if self.summary_table.rowCount() > idx:
-                     # Item 0 is ID
+                     # Item 0 is Sample ID for summary table only
                      item_id = self.summary_table.item(idx, 0)
-                     if item_id: embryo_id = item_id.text()
+                     if item_id: summary_sample_id = item_id.text()
                      
                      # Column 1 is now a dropdown widget (Result Summary)
                      widget_res = self.summary_table.cellWidget(idx, 1)
@@ -746,7 +753,6 @@ class PGTAReportGeneratorApp(QMainWindow):
                      if item_mt: mtcopy = item_mt.text()
 
                 # Get Detailed Info (Result Desc, Autosomes, Image, Chromosomes)
-                # If form_dict has references:
                 # result_description and sex_chromosomes are now combo boxes
                 result_desc_widget = form_dict.get('result_description')
                 if result_desc_widget and hasattr(result_desc_widget, 'currentText'):
@@ -777,11 +783,13 @@ class PGTAReportGeneratorApp(QMainWindow):
                 inconclusive_comment = inconclusive_comment_widget.toPlainText() if inconclusive_comment_widget else ''
 
                 e_data.append({
-                    'embryo_id': embryo_id,
+                    'embryo_id': summary_sample_id,  # For Results Summary (page 1)
+                    'embryo_id_detail': detail_embryo_id,  # For Embryo Details (page 4+)
                     'result_summary': res_sum, 
                     'interpretation': interp,
                     'result_description': result_desc,
                     'autosomes': autosomes,
+                    'sex_chromosomes': sex,
                     'mtcopy': mtcopy,
                     'cnv_image_path': img_path,
                     'chromosome_statuses': chr_statuses,
@@ -792,6 +800,7 @@ class PGTAReportGeneratorApp(QMainWindow):
             # Fallback if no forms (initial state)
              e_data = [{
                 'embryo_id': 'E1',
+                'embryo_id_detail': 'E1',
                 'result_summary': 'Euploid', 
                 'interpretation': 'Euploid',
                 'chromosome_statuses': {str(i): 'N' for i in range(1, 23)}
@@ -892,6 +901,13 @@ class PGTAReportGeneratorApp(QMainWindow):
         group = QGroupBox(f"Embryo {embryo_num} Details")
         form = QFormLayout()
         group.setLayout(form)
+        
+        # Embryo ID for detail section (independent from Summary table Sample column)
+        embryo_id_input = QLineEdit()
+        embryo_id_input.setPlaceholderText(f"PS{embryo_num}")
+        embryo_id_input.setText(f"PS{embryo_num}")
+        embryo_id_input.textChanged.connect(self.update_preview)
+        form.addRow("Embryo ID (Page 4):", embryo_id_input)
         
         # Result Description dropdown (Embryo Result Page) - All black as per spec
         result_description = ClickOnlyComboBox()
@@ -997,6 +1013,7 @@ class PGTAReportGeneratorApp(QMainWindow):
     
         return {
             'group': group,
+            'embryo_id_input': embryo_id_input,
             'result_description': result_description,
             'autosomes': autosomes,
             'sex_chromosomes': sex_chromosomes,
@@ -1678,7 +1695,8 @@ class PGTAReportGeneratorApp(QMainWindow):
             'sample_receipt_date': clean(self.sample_receipt_date_input.text()),
             'biopsy_performed_by': clean(self.biopsy_performed_by_input.toPlainText()),
             'report_date': clean(self.report_date_input.text()),
-            'indication': clean(self.indication_input.toPlainText())
+            'indication': clean(self.indication_input.toPlainText()),
+            'results_summary_comment': clean(self.results_summary_comment.toPlainText()) if hasattr(self, 'results_summary_comment') else ''
         }
         
         embryos = []
@@ -1706,9 +1724,15 @@ class PGTAReportGeneratorApp(QMainWindow):
             cnv_image_path = None
             chr_statuses = {}
             mosaic_percentages = {}
+            detail_embryo_id = t_id  # Default to same as summary, but can be overridden
             
             if i < len(self.embryo_forms):
                 form = self.embryo_forms[i]
+                
+                # Get separate embryo ID for detail section
+                if 'embryo_id_input' in form:
+                    detail_embryo_id = form['embryo_id_input'].text() or t_id
+                
                 # result_description and sex_chromosomes are now combo boxes
                 result_desc = form['result_description'].currentText() if hasattr(form['result_description'], 'currentText') else form['result_description'].text()
                 autosomes = form['autosomes'].text()
@@ -1738,7 +1762,8 @@ class PGTAReportGeneratorApp(QMainWindow):
                          break
             
             embryo = {
-                'embryo_id': t_id,
+                'embryo_id': t_id,  # For Results Summary (page 1)
+                'embryo_id_detail': detail_embryo_id,  # For Embryo Details (page 4+)
                 'result_summary': t_sum,
                 'interpretation': t_interp,
                 'mtcopy': t_mt,
@@ -1817,6 +1842,10 @@ class PGTAReportGeneratorApp(QMainWindow):
         self.report_date_input.setText(p_info.get('report_date', ''))
         self.indication_input.setText(p_info.get('indication', ''))
         
+        # Results Summary Comment
+        if hasattr(self, 'results_summary_comment'):
+            self.results_summary_comment.setText(p_info.get('results_summary_comment', ''))
+        
         # Embryos
         embryos = data.get('embryos', [])
         count = len(embryos)
@@ -1852,6 +1881,11 @@ class PGTAReportGeneratorApp(QMainWindow):
                 break
                 
             form = self.embryo_forms[idx]
+            
+            # Set embryo ID for detail section (separate from summary Sample)
+            if 'embryo_id_input' in form:
+                detail_id = embryo.get('embryo_id_detail') or embryo.get('embryo_id', f'PS{idx+1}')
+                form['embryo_id_input'].setText(detail_id)
             
             # result_description and sex_chromosomes are now combo boxes
             if hasattr(form['result_description'], 'setCurrentText'):
@@ -3138,15 +3172,15 @@ Use null for fields not found. Return ONLY valid JSON."""
         return data
     
     def _normalize_date(self, date_str):
-        """Normalize date string to DD/MM/YYYY format"""
+        """Normalize date string to DD-MM-YYYY format (hyphen only)"""
         import re
         date_match = re.match(r'(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{2,4})', date_str)
         if date_match:
             d, m, y = date_match.groups()
             if len(y) == 2:
                 y = '20' + y
-            return f"{d.zfill(2)}/{m.zfill(2)}/{y}"
-        return date_str
+            return f"{d.zfill(2)}-{m.zfill(2)}-{y}"  # Use hyphen format
+        return date_str.replace('/', '-')
     
     def verify_all_bulk_trf(self):
         """Verify all uploaded TRFs against all patients in the batch"""
@@ -4870,22 +4904,23 @@ Use null for fields not found. Return ONLY valid JSON."""
                     s = str(d_val).split(' ')[0] # Remove time if present
                     try:
                         # Try parsing common formats
-                        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
+                        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%d.%m.%Y"):
                             try:
                                 dt = datetime.strptime(s, fmt)
-                                return dt.strftime("%d/%m/%Y")
+                                return dt.strftime("%d-%m-%Y")  # Use hyphen format DD-MM-YYYY
                             except ValueError:
                                 continue
-                        return s # Return original if parse fails
+                        # Replace slashes with hyphens in original if parse fails
+                        return s.replace('/', '-')
                     except:
-                        return s
+                        return s.replace('/', '-')
 
                 b_date_raw = get_clean_value(p_row, ['Date of Biopsy', 'Biopsy Date'])
                 r_date_raw = get_clean_value(p_row, ['Date Sample Received', 'Receipt Date'])
                 
                 b_date = format_date(b_date_raw)
                 r_date = format_date(r_date_raw)
-                rep_date = datetime.now().strftime("%d/%m/%Y")
+                rep_date = datetime.now().strftime("%d-%m-%Y")
                 
                 patient_info = {
                     'patient_name': p_name,
@@ -5248,6 +5283,9 @@ Use null for fields not found. Return ONLY valid JSON."""
         self.batch_report_date = QLineEdit(data['patient_info'].get('report_date', datetime.now().strftime("%d-%m-%Y")))
         self.batch_indication = QTextEdit(data['patient_info'].get('indication', ''))
         self.batch_indication.setMaximumHeight(80)
+        self.batch_results_summary_comment = QTextEdit(data['patient_info'].get('results_summary_comment', ''))
+        self.batch_results_summary_comment.setPlaceholderText("Optional comment for results summary section (appears below table on page 1)")
+        self.batch_results_summary_comment.setMaximumHeight(60)
     
         # Connect Patient Fields to Live Preview
         for field in [self.batch_patient_name, self.batch_spouse_name, self.batch_pin, self.batch_age,
@@ -5256,6 +5294,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                       self.batch_sample_receipt_date, self.batch_biopsy_performed_by, self.batch_report_date]:
             field.textChanged.connect(self.update_batch_preview)
         self.batch_indication.textChanged.connect(self.update_batch_preview)
+        self.batch_results_summary_comment.textChanged.connect(self.update_batch_preview)
     
         patient_form.addRow("Patient Name:", self.batch_patient_name)
         patient_form.addRow("Spouse Name:", self.batch_spouse_name)
@@ -5271,6 +5310,7 @@ Use null for fields not found. Return ONLY valid JSON."""
         patient_form.addRow("Biopsy Performed By:", self.batch_biopsy_performed_by)
         patient_form.addRow("Report Date:", self.batch_report_date)
         patient_form.addRow("Indication:", self.batch_indication)
+        patient_form.addRow("Results Summary Comment:", self.batch_results_summary_comment)
         
         # --- TRF Verification Section for Batch ---
         trf_group = QGroupBox("TRF Verification")
@@ -5317,7 +5357,11 @@ Use null for fields not found. Return ONLY valid JSON."""
             embryo_form = QFormLayout()
             embryo_frame.setLayout(embryo_form)
         
+            # Sample ID for Results Summary (page 1)
             e_id = QLineEdit(embryo['embryo_id'])
+            
+            # Embryo ID for Details section (page 4+) - separate from Summary Sample
+            e_id_detail = QLineEdit(embryo.get('embryo_id_detail') or embryo['embryo_id'])
             
             # Result Summary dropdown with colors
             e_result_summary = ClickOnlyComboBox()
@@ -5374,6 +5418,7 @@ Use null for fields not found. Return ONLY valid JSON."""
         
             # Connect Embryo Fields to Live Preview
             e_id.textChanged.connect(self.update_batch_preview)
+            e_id_detail.textChanged.connect(self.update_batch_preview)
             e_result_summary.currentTextChanged.connect(self.update_batch_preview)
             e_result_desc.currentTextChanged.connect(self.update_batch_preview)
             e_autosomes.textChanged.connect(self.update_batch_preview)
@@ -5391,7 +5436,8 @@ Use null for fields not found. Return ONLY valid JSON."""
             upload_img_btn.clicked.connect(lambda checked, idx=i: self.upload_embryo_image_batch(idx))
             image_layout.addWidget(upload_img_btn)
         
-            embryo_form.addRow("Embryo ID:", e_id)
+            embryo_form.addRow("Sample (Summary Page 1):", e_id)
+            embryo_form.addRow("Embryo ID (Details Page 4+):", e_id_detail)
             embryo_form.addRow("Result Summary:", e_result_summary)
             embryo_form.addRow("Result Description:", e_result_desc)
             embryo_form.addRow("Autosomes:", e_autosomes)
@@ -5466,6 +5512,7 @@ Use null for fields not found. Return ONLY valid JSON."""
         
             self.batch_embryo_editors.append({
                 'embryo_id': e_id,
+                'embryo_id_detail': e_id_detail,
                 'result_summary': e_result_summary,
                 'result_description': e_result_desc,
                 'autosomes': e_autosomes,
@@ -5537,11 +5584,13 @@ Use null for fields not found. Return ONLY valid JSON."""
         data['patient_info']['biopsy_performed_by'] = clean(self.batch_biopsy_performed_by.toPlainText())
         data['patient_info']['report_date'] = clean(self.batch_report_date.text())
         data['patient_info']['indication'] = clean(self.batch_indication.toPlainText())
+        data['patient_info']['results_summary_comment'] = clean(self.batch_results_summary_comment.toPlainText()) if hasattr(self, 'batch_results_summary_comment') else ''
     
         # Update ALL embryo fields
         for i, editor in enumerate(self.batch_embryo_editors):
             if i < len(data['embryos']):
                 data['embryos'][i]['embryo_id'] = editor['embryo_id'].text()
+                data['embryos'][i]['embryo_id_detail'] = editor['embryo_id_detail'].text() if 'embryo_id_detail' in editor else editor['embryo_id'].text()
                 # result_summary, result_description, sex_chromosomes are now combo boxes
                 data['embryos'][i]['result_summary'] = editor['result_summary'].currentText()
                 data['embryos'][i]['result_description'] = editor['result_description'].currentText()
@@ -5646,13 +5695,15 @@ Use null for fields not found. Return ONLY valid JSON."""
             'sample_receipt_date': self.batch_sample_receipt_date.text(),
             'biopsy_performed_by': self.batch_biopsy_performed_by.toPlainText(),
             'report_date': self.batch_report_date.text(),
-            'indication': self.batch_indication.toPlainText()
+            'indication': self.batch_indication.toPlainText(),
+            'results_summary_comment': self.batch_results_summary_comment.toPlainText() if hasattr(self, 'batch_results_summary_comment') else ''
         }
         
         e_data = []
         for editor in self.batch_embryo_editors:
             e_data.append({
                 'embryo_id': editor['embryo_id'].text(),
+                'embryo_id_detail': editor['embryo_id_detail'].text() if 'embryo_id_detail' in editor else editor['embryo_id'].text(),
                 # result_summary, result_description, sex_chromosomes are now combo boxes
                 'result_summary': editor['result_summary'].currentText(),
                 'interpretation': editor['interpretation'].currentText(),

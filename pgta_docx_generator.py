@@ -280,6 +280,13 @@ class PGTADocxGenerator:
                 # Color only Interpretation and Result according to logic
                 color = interp_color if c_idx == 4 else None
                 self._set_paragraph_font(p, font_size=9, color=color)
+        
+        # Results Summary Comment (optional, appears below table)
+        results_summary_comment = self._clean(patient_data.get('results_summary_comment', ''))
+        if results_summary_comment:
+            doc.add_paragraph()  # Spacer
+            p_comment = doc.add_paragraph(results_summary_comment)
+            self._set_paragraph_font(p_comment, font_size=9)
 
     def _populate_patient_table(self, table, data):
         """Standard Patient Info Population Logic"""
@@ -361,8 +368,8 @@ class PGTADocxGenerator:
 
         doc.add_paragraph()
         
-        # 2. Embryo ID
-        eid = self._clean(embryo_data.get('embryo_id'))
+        # 2. Embryo ID - Use embryo_id_detail for detail pages, fallback to embryo_id
+        eid = self._clean(embryo_data.get('embryo_id_detail')) or self._clean(embryo_data.get('embryo_id'))
         p_eid = doc.add_paragraph()
         self._set_paragraph_font(p_eid, font_name="Calibri", font_size=12, bold=True, color="#1F497D")
         p_eid.add_run(f"EMBRYO: {eid}")

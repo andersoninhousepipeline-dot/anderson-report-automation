@@ -19,20 +19,20 @@ def format_date(d_val):
         for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
             try:
                 dt = datetime.strptime(s, fmt)
-                return dt.strftime("%d/%m/%Y")
+                return dt.strftime("%d-%m-%Y")  # Use hyphen format DD-MM-YYYY
             except ValueError:
                 continue
-        return s
+        return s.replace('/', '-')  # Replace slashes with hyphens
     except:
-        return s
+        return s.replace('/', '-')
 
 def test_date_formatting():
     print("\n--- Testing Date Formatting ---")
     cases = [
-        ("2023-10-25", "25/10/2023"),
-        ("25/10/2023", "25/10/2023"),
-        ("10/25/2023", "25/10/2023"),
-        ("25-10-2023", "25/10/2023"),
+        ("2023-10-25", "25-10-2023"),
+        ("25/10/2023", "25-10-2023"),
+        ("10/25/2023", "25-10-2023"),
+        ("25-10-2023", "25-10-2023"),
         ("Invalid", "Invalid"),
         (None, "")
     ]

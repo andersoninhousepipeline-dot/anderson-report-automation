@@ -439,7 +439,16 @@ class PGTAReportTemplate:
         # Results summary table
         results_table = self._create_results_summary_table(embryos_data)
         elements.append(results_table)
-        elements.append(Spacer(1, 12))
+        elements.append(Spacer(1, 8))
+        
+        # Results summary comment (optional, appears below table)
+        results_summary_comment = self._clean(patient_data.get('results_summary_comment', ''))
+        if results_summary_comment:
+            comment_para = Paragraph(results_summary_comment, self.styles['PGTABodyText'])
+            elements.append(comment_para)
+            elements.append(Spacer(1, 8))
+        
+        elements.append(Spacer(1, 4))
         
         return elements
     
@@ -595,45 +604,41 @@ class PGTAReportTemplate:
         return table
     
     def _build_methodology_page(self):
-        """Build methodology and static content page"""
+        """Build methodology and static content page - sections flow continuously"""
         elements = []
         
-        # Methodology section
-        # Methodology section
+        # Methodology section - no KeepTogether, just natural flow
         elements.append(self._create_section_header("Methodology"))
-        elements.append(Spacer(1, 8)) # Gap after header line
+        elements.append(Spacer(1, 8))
         elements.append(Paragraph(self.METHODOLOGY_TEXT, self.styles['PGTABodyText']))
         elements.append(Spacer(1, 12))
         
-        # Mosaicism section
+        # Mosaicism section - natural flow
         elements.append(self._create_section_header("Conditions for reporting mosaicism"))
-        elements.append(Spacer(1, 8)) # Gap after header line
+        elements.append(Spacer(1, 8))
         elements.append(Paragraph(self.MOSAICISM_TEXT, self.styles['PGTABodyText']))
-        elements.append(Spacer(1, 6)) # Added spacing between intro and bullets
+        elements.append(Spacer(1, 6))
         
         # Mosaicism bullets
         for bullet in self.MOSAICISM_BULLETS:
             elements.append(Paragraph(f"• {bullet}", self.styles['PGTABulletText']))
-        elements.append(Spacer(1, 6)) # Added spacing before clinical text
+        elements.append(Spacer(1, 6))
         elements.append(Paragraph(self.MOSAICISM_CLINICAL, self.styles['PGTABodyText']))
-        elements.append(Spacer(1, 12)) # Increased spacing between sections
+        elements.append(Spacer(1, 12))
         
-        # Limitations section
+        # Limitations section - natural flow
         elements.append(self._create_section_header("Limitations"))
-        elements.append(Spacer(1, 8)) # Gap after header line
+        elements.append(Spacer(1, 8))
         for limitation in self.LIMITATIONS:
             elements.append(Paragraph(f"• {limitation}", self.styles['PGTABulletText']))
         
         elements.append(Spacer(1, 12))
-        
         elements.append(Spacer(1, 12))
         
-        # References section
-        elements.append(CondPageBreak(60)) # Only break if < ~0.8 inch of space remains (header protection)
+        # References section - natural flow
         elements.append(self._create_section_header("References"))
-        elements.append(Spacer(1, 8)) # Gap after header line
+        elements.append(Spacer(1, 8))
         for idx, ref in enumerate(self.REFERENCES, 1):
-            # Using PGTABodyText logic (11pt) instead of small text
             elements.append(Paragraph(f"{idx}. {ref}", self.styles['PGTABodyText']))
         
         return elements
@@ -743,6 +748,8 @@ class PGTAReportTemplate:
             
         # Embryo Identification matching source style
         # Font: Gill Sans MT,Bold, Size: 12.00
+        # Use embryo_id_detail for detail pages, fallback to embryo_id if not present
+        detail_embryo_id = self._clean(embryo_data.get('embryo_id_detail')) or self._clean(embryo_data.get('embryo_id'))
         embryo_id_style = ParagraphStyle(
             name='EmbryoIDStyle',
             parent=self.styles['Normal'],
@@ -751,7 +758,7 @@ class PGTAReportTemplate:
             fontName=self._get_font('GillSansMT-Bold', 'Helvetica-Bold'),
             textColor=colors.HexColor(self.COLORS['blue_title'])
         )
-        elements.append(Paragraph(f"<b>EMBRYO: {self._clean(embryo_data.get('embryo_id'))}</b>", embryo_id_style))
+        elements.append(Paragraph(f"<b>EMBRYO: {detail_embryo_id}</b>", embryo_id_style))
         elements.append(Spacer(1, 6))
         
         # Result Row: "Mention in black colour" (User Request)
