@@ -483,4 +483,4 @@ This software is provided for internal use in PGT-A report generation.
 
 ---
 
-**Built with ❤️ for accurate and professional PGT-A reporting**
+
