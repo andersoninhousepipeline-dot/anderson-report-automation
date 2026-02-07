@@ -386,7 +386,7 @@ class PGTADocxGenerator:
         details = [
             ("Result:", res, "#000000"),
             ("Autosomes:", auto, self._get_status_color_docx(auto)),
-            ("Sex Chromosomes:", sex, "#000000" if "NORMAL" in sex.upper() else "#FF0000"),
+            ("Sex Chromosomes:", sex, "#0000FF" if "MOSAIC" in sex.upper() else ("#FF0000" if "ABNORMAL" in sex.upper() else "#000000")),
             ("Interpretation:", interp, interp_color),
             ("MTcopy:", mt, "#000000")
         ]
