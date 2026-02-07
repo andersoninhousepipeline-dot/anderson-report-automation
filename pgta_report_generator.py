@@ -4881,6 +4881,7 @@ Use null for fields not found. Return ONLY valid JSON."""
             
             # Parse and group data
             self.bulk_patient_data_list = []
+            self._bulk_matched_samples = set()  # Track matched samples to prevent duplicates
             file_dir = os.path.dirname(file_path)
             
             for _, p_row in df_details.iterrows():
@@ -4941,29 +4942,76 @@ Use null for fields not found. Return ONLY valid JSON."""
                 }
                 
                 # Find matching embryos
-                # Robust Normalization: Remove all non-alphanumeric characters
+                # Enhanced Normalization: Remove prefixes, suffixes, and non-alphanumeric characters
                 import re
                 def normalize_str(s):
+                    """Enhanced normalization that removes prefixes, suffixes, and special chars"""
                     if not s: return ""
-                    return re.sub(r'[^A-Z0-9]', '', str(s).upper())
+                    s = str(s).upper().strip()
+                    
+                    # Remove common prefixes (titles, initials)
+                    prefixes = ['MRS.', 'MR.', 'SMT.', 'DR.', 'MS.', 'MISS.', 'PROF.', 
+                               'R.', 'S.', 'K.', 'M.', 'D.', 'P.', 'A.', 'B.', 'C.', 
+                               'G.', 'H.', 'J.', 'L.', 'N.', 'T.', 'V.', 'W.']
+                    for prefix in prefixes:
+                        if s.startswith(prefix):
+                            s = s[len(prefix):].strip()
+                            break  # Only remove first prefix
+                    
+                    # Remove all non-alphanumeric characters
+                    s = re.sub(r'[^A-Z0-9]', '', s)
+                    
+                    # Remove single-letter suffixes at the end (like C, D, R, S, G, etc.)
+                    # Pattern: Name ends with a single letter that's likely a suffix
+                    # Examples: KAVITHAC -> KAVITHA, SINDHUR -> SINDHU, SAHANAD -> SAHANA
+                    if len(s) > 3 and s[-1].isalpha() and not s[-2].isdigit():
+                        # Check if removing last char leaves a reasonable name (at least 3 chars)
+                        potential_name = s[:-1]
+                        if len(potential_name) >= 3:
+                            # Only remove if the last char is a common suffix letter
+                            # This prevents removing legitimate name endings
+                            common_suffixes = ['C', 'D', 'R', 'S', 'G', 'K', 'M', 'N', 'P', 'T', 'V', 'W']
+                            if s[-1] in common_suffixes:
+                                s = potential_name
+                    
+                    return s
+
 
                 norm_p_name = normalize_str(p_name)
                 norm_sample_id = normalize_str(p_row.get('Sample ID', ''))
                 
                 embryos = []
                 
+                # Track matched samples to avoid duplicates across patients
+                if not hasattr(self, '_bulk_matched_samples'):
+                    self._bulk_matched_samples = set()
+                
                 for _, s_row in df_summary.iterrows():
                     sample_orig = str(s_row.get('Sample name', ''))
+                    
+                    # Skip if already matched to another patient
+                    if sample_orig in self._bulk_matched_samples:
+                        continue
+                    
                     norm_s_name = normalize_str(sample_orig)
                     
-                    # Enhanced Matching Logic: Check Sample ID first (more specific), then Patient Name
-                    match = False
-                    if norm_sample_id and norm_sample_id in norm_s_name:
-                        match = True
-                    elif norm_p_name and norm_p_name in norm_s_name:
-                        match = True
+                    # Enhanced Matching Logic with duplicate prevention:
+                    # Priority 1: Sample ID (Anderson ID) - most specific
+                    # Priority 2: Patient Name - fallback for flexibility
+                    # Duplicate tracking prevents same embryo assigned to multiple patients
                     
-                    if match:
+                    match_type = None
+                    
+                    # Try Sample ID first (most reliable)
+                    if norm_sample_id and norm_sample_id in norm_s_name:
+                        match_type = 'sample_id'
+                    # Fallback to patient name matching
+                    elif norm_p_name and norm_p_name in norm_s_name:
+                        match_type = 'patient_name'
+                    
+                    if match_type:
+                        # Mark as matched
+                        self._bulk_matched_samples.add(sample_orig)
                         # Extract embryo ID
                         base_id = sample_orig.split('_')[0]
                         embryo_id = base_id.split('-')[-1] if '-' in base_id else base_id
@@ -5135,17 +5183,11 @@ Use null for fields not found. Return ONLY valid JSON."""
                         # Get autosomes directly from the AUTOSOMES column in Excel
                         autosomes_raw = str(s_row.get('AUTOSOMES', '')).strip()
                         
-                        # Handle nan/empty values
+                        # Handle nan/empty values - use exactly as provided
                         if not autosomes_raw or autosomes_raw.lower() in ['nan', 'none', 'nat', 'null', '']:
-                            # Only if AUTOSOMES column is empty, derive from result summary
-                            if result_summary_val == "Normal chromosome complement":
-                                autosomes_val = "Euploid ( Normal )"
-                            else:
-                                autosomes_val = ""  # Leave empty if no data
-                        elif autosomes_raw.lower() == 'normal':
-                            autosomes_val = "Euploid ( Normal )"
+                            autosomes_val = ""  # Leave empty if no data
                         else:
-                            # Use the AUTOSOMES column value directly
+                            # Use the AUTOSOMES column value exactly as provided
                             autosomes_val = autosomes_raw
 
                         # --- Phase 4: Result Description Mapping ---
@@ -5163,16 +5205,12 @@ Use null for fields not found. Return ONLY valid JSON."""
                         # --- Phase 4: Sex Chromosomes - STRICTLY from SEX column ---
                         sex_raw = str(s_row.get('SEX', '')).strip()
                         
-                        # Handle nan/empty values
+                        # Handle nan/empty values - use exactly as provided
                         if not sex_raw or sex_raw.lower() in ['nan', 'none', 'nat', 'null', '']:
-                            sex_chr_val = "Normal"  # Default to Normal if no data
-                        elif sex_raw.lower() == 'normal':
-                            sex_chr_val = "Normal"
-                        elif sex_raw.lower() == 'mosaic':
-                            sex_chr_val = "Mosaic"
+                            sex_chr_val = ""  # Leave empty if no data
                         else:
-                            # Any other value (e.g., "MOSAIC GAIN (52%)", abnormality descriptions)
-                            sex_chr_val = "Abnormal"
+                            # Use the SEX column value exactly as provided (e.g., "MOSAIC GAIN (52%)", "Normal", "Abnormal")
+                            sex_chr_val = sex_raw
 
                         # Auto-match CNV image (Restored)
                         cnv_image_path = None
