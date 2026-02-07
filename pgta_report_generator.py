@@ -922,11 +922,12 @@ class PGTAReportGeneratorApp(QMainWindow):
         
         autosomes = QLineEdit()
         
-        # Sex Chromosomes dropdown - Normal=Black, Abnormal=Red
+        # Sex Chromosomes dropdown - Normal=Black, Abnormal=Red, Mosaic=Blue
         sex_chromosomes = ClickOnlyComboBox()
         add_colored_items_to_combo(sex_chromosomes, [
             ("Normal", "black"),
-            ("Abnormal", "red")
+            ("Abnormal", "red"),
+            ("Mosaic", "blue")
         ])
         sex_chromosomes.setEditable(True)
         sex_chromosomes.setInsertPolicy(ClickOnlyComboBox.InsertPolicy.NoInsert)
@@ -5167,6 +5168,8 @@ Use null for fields not found. Return ONLY valid JSON."""
                             sex_chr_val = "Normal"  # Default to Normal if no data
                         elif sex_raw.lower() == 'normal':
                             sex_chr_val = "Normal"
+                        elif sex_raw.lower() == 'mosaic':
+                            sex_chr_val = "Mosaic"
                         else:
                             # Any other value (e.g., "MOSAIC GAIN (52%)", abnormality descriptions)
                             sex_chr_val = "Abnormal"
@@ -5390,11 +5393,12 @@ Use null for fields not found. Return ONLY valid JSON."""
             
             e_autosomes = QLineEdit(embryo.get('autosomes', ''))
             
-            # Sex Chromosomes dropdown - Normal=Black, Abnormal=Red
+            # Sex Chromosomes dropdown - Normal=Black, Abnormal=Red, Mosaic=Blue
             e_sex_chr = ClickOnlyComboBox()
             add_colored_items_to_combo(e_sex_chr, [
                 ("Normal", "black"),
-                ("Abnormal", "red")
+                ("Abnormal", "red"),
+                ("Mosaic", "blue")
             ])
             e_sex_chr.setEditable(True)
             e_sex_chr.setInsertPolicy(ClickOnlyComboBox.InsertPolicy.NoInsert)
@@ -6008,7 +6012,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                         'result_summary': clean_val(row.get(get_col_name(df, ['Result_Summary', 'Result Summary', 'Result']))),
                         'result_description': clean_val(row.get(get_col_name(df, ['Result_Description', 'Result Description', 'Conclusion']))),
                         'autosomes': clean_val(row.get(get_col_name(df, ['Autosomes']))),
-                        'sex_chromosomes': clean_val(row.get(get_col_name(df, ['Sex_Chromosomes', 'Sex Chromosomes', 'Sex'])), "Normal"),
+                        'sex_chromosomes': clean_val(row.get('SEX'), "Normal"),
                         'interpretation': clean_val(row.get(get_col_name(df, ['Interpretation']))),
                         'mtcopy': clean_val(row.get(get_col_name(df, ['MTcopy', 'MT copy'])), 'NA'),
                         'chromosome_statuses': chr_statuses,
