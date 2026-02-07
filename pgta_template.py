@@ -740,6 +740,8 @@ class PGTAReportTemplate:
         sex_color = colors.black
         if "ABNORMAL" in sex_text.upper():
             sex_color = colors.red
+        elif "MOSAIC" in sex_text.upper():
+            sex_color = colors.blue
 
         # MTcopy: NA for non-euploid
         mtcopy = self._clean(embryo_data.get('mtcopy'), 'NA')
