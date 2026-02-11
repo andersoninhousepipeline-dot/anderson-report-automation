@@ -934,8 +934,18 @@ class PGTAReportGeneratorApp(QMainWindow):
         
         # Connect signals
         result_description.currentTextChanged.connect(self.update_preview)
-        autosomes.textChanged.connect(self.update_preview)
-        sex_chromosomes.currentTextChanged.connect(self.update_preview)
+        
+        # Auto-update interpretation for manual entry
+        def check_manual_interp():
+            if autosomes.text().strip().lower() == "normal" and sex_chromosomes.currentText().strip().lower() == "normal":
+                if self.summary_table.rowCount() >= embryo_num:
+                    interp_widget = self.summary_table.cellWidget(embryo_num - 1, 2)
+                    if interp_widget:
+                        interp_widget.setCurrentText("Euploid")
+            self.update_preview()
+
+        autosomes.textChanged.connect(check_manual_interp)
+        sex_chromosomes.currentTextChanged.connect(check_manual_interp)
         
         form.addRow("Result Description (Page 4):", result_description)
         form.addRow("Autosomes:", autosomes)
@@ -4881,6 +4891,7 @@ Use null for fields not found. Return ONLY valid JSON."""
             
             # Parse and group data
             self.bulk_patient_data_list = []
+            self._bulk_matched_samples = set()  # Track matched samples to prevent duplicates
             file_dir = os.path.dirname(file_path)
             
             for _, p_row in df_details.iterrows():
@@ -4941,29 +4952,76 @@ Use null for fields not found. Return ONLY valid JSON."""
                 }
                 
                 # Find matching embryos
-                # Robust Normalization: Remove all non-alphanumeric characters
+                # Enhanced Normalization: Remove prefixes, suffixes, and non-alphanumeric characters
                 import re
                 def normalize_str(s):
+                    """Enhanced normalization that removes prefixes, suffixes, and special chars"""
                     if not s: return ""
-                    return re.sub(r'[^A-Z0-9]', '', str(s).upper())
+                    s = str(s).upper().strip()
+                    
+                    # Remove common prefixes (titles, initials)
+                    prefixes = ['MRS.', 'MR.', 'SMT.', 'DR.', 'MS.', 'MISS.', 'PROF.', 
+                               'R.', 'S.', 'K.', 'M.', 'D.', 'P.', 'A.', 'B.', 'C.', 
+                               'G.', 'H.', 'J.', 'L.', 'N.', 'T.', 'V.', 'W.']
+                    for prefix in prefixes:
+                        if s.startswith(prefix):
+                            s = s[len(prefix):].strip()
+                            break  # Only remove first prefix
+                    
+                    # Remove all non-alphanumeric characters
+                    s = re.sub(r'[^A-Z0-9]', '', s)
+                    
+                    # Remove single-letter suffixes at the end (like C, D, R, S, G, etc.)
+                    # Pattern: Name ends with a single letter that's likely a suffix
+                    # Examples: KAVITHAC -> KAVITHA, SINDHUR -> SINDHU, SAHANAD -> SAHANA
+                    if len(s) > 3 and s[-1].isalpha() and not s[-2].isdigit():
+                        # Check if removing last char leaves a reasonable name (at least 3 chars)
+                        potential_name = s[:-1]
+                        if len(potential_name) >= 3:
+                            # Only remove if the last char is a common suffix letter
+                            # This prevents removing legitimate name endings
+                            common_suffixes = ['C', 'D', 'R', 'S', 'G', 'K', 'M', 'N', 'P', 'T', 'V', 'W']
+                            if s[-1] in common_suffixes:
+                                s = potential_name
+                    
+                    return s
+
 
                 norm_p_name = normalize_str(p_name)
                 norm_sample_id = normalize_str(p_row.get('Sample ID', ''))
                 
                 embryos = []
                 
+                # Track matched samples to avoid duplicates across patients
+                if not hasattr(self, '_bulk_matched_samples'):
+                    self._bulk_matched_samples = set()
+                
                 for _, s_row in df_summary.iterrows():
                     sample_orig = str(s_row.get('Sample name', ''))
+                    
+                    # Skip if already matched to another patient
+                    if sample_orig in self._bulk_matched_samples:
+                        continue
+                    
                     norm_s_name = normalize_str(sample_orig)
                     
-                    # Enhanced Matching Logic: Check Sample ID first (more specific), then Patient Name
-                    match = False
-                    if norm_sample_id and norm_sample_id in norm_s_name:
-                        match = True
-                    elif norm_p_name and norm_p_name in norm_s_name:
-                        match = True
+                    # Enhanced Matching Logic with duplicate prevention:
+                    # Priority 1: Sample ID (Anderson ID) - most specific
+                    # Priority 2: Patient Name - fallback for flexibility
+                    # Duplicate tracking prevents same embryo assigned to multiple patients
                     
-                    if match:
+                    match_type = None
+                    
+                    # Try Sample ID first (most reliable)
+                    if norm_sample_id and norm_sample_id in norm_s_name:
+                        match_type = 'sample_id'
+                    # Fallback to patient name matching
+                    elif norm_p_name and norm_p_name in norm_s_name:
+                        match_type = 'patient_name'
+                    
+                    if match_type:
+                        # Mark as matched
+                        self._bulk_matched_samples.add(sample_orig)
                         # Extract embryo ID
                         base_id = sample_orig.split('_')[0]
                         embryo_id = base_id.split('-')[-1] if '-' in base_id else base_id
@@ -5135,17 +5193,11 @@ Use null for fields not found. Return ONLY valid JSON."""
                         # Get autosomes directly from the AUTOSOMES column in Excel
                         autosomes_raw = str(s_row.get('AUTOSOMES', '')).strip()
                         
-                        # Handle nan/empty values
+                        # Handle nan/empty values - use exactly as provided
                         if not autosomes_raw or autosomes_raw.lower() in ['nan', 'none', 'nat', 'null', '']:
-                            # Only if AUTOSOMES column is empty, derive from result summary
-                            if result_summary_val == "Normal chromosome complement":
-                                autosomes_val = "Euploid ( Normal )"
-                            else:
-                                autosomes_val = ""  # Leave empty if no data
-                        elif autosomes_raw.lower() == 'normal':
-                            autosomes_val = "Euploid ( Normal )"
+                            autosomes_val = ""  # Leave empty if no data
                         else:
-                            # Use the AUTOSOMES column value directly
+                            # Use the AUTOSOMES column value exactly as provided
                             autosomes_val = autosomes_raw
 
                         # --- Phase 4: Result Description Mapping ---
@@ -5163,16 +5215,12 @@ Use null for fields not found. Return ONLY valid JSON."""
                         # --- Phase 4: Sex Chromosomes - STRICTLY from SEX column ---
                         sex_raw = str(s_row.get('SEX', '')).strip()
                         
-                        # Handle nan/empty values
+                        # Handle nan/empty values - use exactly as provided
                         if not sex_raw or sex_raw.lower() in ['nan', 'none', 'nat', 'null', '']:
-                            sex_chr_val = "Normal"  # Default to Normal if no data
-                        elif sex_raw.lower() == 'normal':
-                            sex_chr_val = "Normal"
-                        elif sex_raw.lower() == 'mosaic':
-                            sex_chr_val = "Mosaic"
+                            sex_chr_val = ""  # Leave empty if no data
                         else:
-                            # Any other value (e.g., "MOSAIC GAIN (52%)", abnormality descriptions)
-                            sex_chr_val = "Abnormal"
+                            # Use the SEX column value exactly as provided (e.g., "MOSAIC GAIN (52%)", "Normal", "Abnormal")
+                            sex_chr_val = sex_raw
 
                         # Auto-match CNV image (Restored)
                         cnv_image_path = None
@@ -5425,10 +5473,17 @@ Use null for fields not found. Return ONLY valid JSON."""
             e_id_detail.textChanged.connect(self.update_batch_preview)
             e_result_summary.currentTextChanged.connect(self.update_batch_preview)
             e_result_desc.currentTextChanged.connect(self.update_batch_preview)
-            e_autosomes.textChanged.connect(self.update_batch_preview)
-            e_sex_chr.currentTextChanged.connect(self.update_batch_preview)
-            e_interp.currentTextChanged.connect(self.update_batch_preview)
             e_mtcopy.textChanged.connect(self.update_batch_preview)
+            e_interp.currentTextChanged.connect(self.update_batch_preview)
+
+            # Auto-update interpretation for batch editor
+            def check_batch_interp():
+                if e_autosomes.text().strip().lower() == "normal" and e_sex_chr.currentText().strip().lower() == "normal":
+                    e_interp.setCurrentText("Euploid")
+                self.update_batch_preview()
+
+            e_autosomes.textChanged.connect(check_batch_interp)
+            e_sex_chr.currentTextChanged.connect(check_batch_interp)
         
             # CNV Image with upload button
             image_layout = QHBoxLayout()
@@ -6006,14 +6061,22 @@ Use null for fields not found. Return ONLY valid JSON."""
                         if mos_val:
                             mosaic_percentages[s_i] = mos_val
 
+                    autosomes_val = clean_val(row.get(get_col_name(df, ['Autosomes'])))
+                    sex_val = clean_val(row.get(get_col_name(df, ['SEX', 'Sex'])) if get_col_name(df, ['SEX', 'Sex']) else None, "Normal")
+                    interp_val = clean_val(row.get(get_col_name(df, ['Interpretation'])))
+                    
+                    # Auto-set Interpretation to Euploid if both are Normal
+                    if not interp_val and autosomes_val.lower() == "normal" and sex_val.lower() == "normal":
+                        interp_val = "Euploid"
+
                     embryos.append({
                         'embryo_id': embryo_id,
                         'cnv_image_path': cnv_image_path,
                         'result_summary': clean_val(row.get(get_col_name(df, ['Result_Summary', 'Result Summary', 'Result']))),
                         'result_description': clean_val(row.get(get_col_name(df, ['Result_Description', 'Result Description', 'Conclusion']))),
-                        'autosomes': clean_val(row.get(get_col_name(df, ['Autosomes']))),
-                        'sex_chromosomes': clean_val(row.get('SEX'), "Normal"),
-                        'interpretation': clean_val(row.get(get_col_name(df, ['Interpretation']))),
+                        'autosomes': autosomes_val,
+                        'sex_chromosomes': sex_val,
+                        'interpretation': interp_val,
                         'mtcopy': clean_val(row.get(get_col_name(df, ['MTcopy', 'MT copy'])), 'NA'),
                         'chromosome_statuses': chr_statuses,
                         'mosaic_percentages': mosaic_percentages
