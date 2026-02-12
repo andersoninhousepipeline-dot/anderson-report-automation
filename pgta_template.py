@@ -520,24 +520,28 @@ class PGTAReportTemplate:
         combined_name = f"{patient_name}<br/>{spouse_name}" if spouse_name else patient_name
         
         data = [
-            [self._wrap_text('<b>Patient name</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{combined_name}</b>", max_width=140), self._wrap_text('<b>PIN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('pin'))}</b>", max_width=144)],
-            [self._wrap_text('<b>Date of Birth/ Age</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('age'))}</b>", max_width=140), self._wrap_text('<b>Sample Number</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_number'))}</b>", max_width=144)],
-            [self._wrap_text('<b>Referring Clinician</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('referring_clinician'))}</b>", max_width=140), self._wrap_text('<b>Biopsy date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_date'))}</b>", max_width=144)],
-            [self._wrap_text('<b>Hospital/Clinic</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('hospital_clinic'))}</b>", max_width=140), self._wrap_text('<b>Sample collection date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_collection_date'))}</b>", max_width=144)],
-            [self._wrap_text('<b>Specimen</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('specimen'))}</b>", max_width=140), self._wrap_text('<b>Sample receipt date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_receipt_date'))}</b>", max_width=144)],
-            [self._wrap_text('<b>Biopsy performed by</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_performed_by'))}</b>", max_width=140), self._wrap_text('<b>Report date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('report_date'))}</b>", max_width=144)]
+            [self._wrap_text('<b>Patient name</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{combined_name}</b>", max_width=160, align='LEFT'), self._wrap_text('<b>PIN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('pin'))}</b>", max_width=144, align='LEFT')],
+            [self._wrap_text('<b>Date of Birth/ Age</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('age'))}</b>", max_width=160, align='LEFT'), self._wrap_text('<b>Sample Number</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_number'))}</b>", max_width=144, align='LEFT')],
+            [self._wrap_text('<b>Referring Clinician</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('referring_clinician'))}</b>", max_width=160, align='LEFT'), self._wrap_text('<b>Biopsy date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_date'))}</b>", max_width=144, align='LEFT')],
+            [self._wrap_text('<b>Hospital/Clinic</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('hospital_clinic'))}</b>", max_width=160, align='LEFT'), self._wrap_text('<b>Sample collection date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_collection_date'))}</b>", max_width=144, align='LEFT')],
+            [self._wrap_text('<b>Specimen</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('specimen'))}</b>", max_width=160, align='LEFT'), self._wrap_text('<b>Sample receipt date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_receipt_date'))}</b>", max_width=144, align='LEFT')],
+            [self._wrap_text('<b>Biopsy performed by</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_performed_by'))}</b>", max_width=160, align='LEFT'), self._wrap_text('<b>Report date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('report_date'))}</b>", max_width=144, align='LEFT')]
         ]
         
-        # Create table with standard widths [Total: 490pt]
-        table = Table(data, colWidths=[85, 12, 146, 85, 12, 150], hAlign='LEFT')
+        # Create table with adjusted widths [Total: 490pt] - give more space to patient name fields
+        table = Table(data, colWidths=[85, 12, 166, 65, 12, 150], hAlign='LEFT')
         
         # Style table
         table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, -1), self._get_font('SegoeUI-Bold', 'Helvetica-Bold')),
             ('FONTSIZE', (0, 0), (-1, -1), 10),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'), # Standard LEFT alignment
-            ('ALIGN', (3, 0), (3, -1), 'LEFT'), # Standard LEFT alignment
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'), # Labels left-aligned
+            ('ALIGN', (1, 0), (1, -1), 'CENTER'), # Colons centered
+            ('ALIGN', (2, 0), (2, -1), 'LEFT'), # Values left-aligned
+            ('ALIGN', (3, 0), (3, -1), 'LEFT'), # Labels left-aligned
+            ('ALIGN', (4, 0), (4, -1), 'CENTER'), # Colons centered
+            ('ALIGN', (5, 0), (5, -1), 'LEFT'), # Values left-aligned
             ('LEFTPADDING', (0, 0), (-1, -1), 0),
             ('RIGHTPADDING', (0, 0), (-1, -1), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
@@ -604,42 +608,51 @@ class PGTAReportTemplate:
         return table
     
     def _build_methodology_page(self):
-        """Build methodology and static content page - sections flow continuously"""
+        """Build methodology and static content page - sections with headings kept together"""
         elements = []
         
-        # Methodology section - no KeepTogether, just natural flow
-        elements.append(self._create_section_header("Methodology"))
-        elements.append(Spacer(1, 8))
-        elements.append(Paragraph(self.METHODOLOGY_TEXT, self.styles['PGTABodyText']))
-        elements.append(Spacer(1, 12))
+        # Methodology section - keep heading and content together
+        methodology_content = []
+        methodology_content.append(self._create_section_header("Methodology"))
+        methodology_content.append(Spacer(1, 8))
+        methodology_content.append(Paragraph(self.METHODOLOGY_TEXT, self.styles['PGTABodyText']))
+        methodology_content.append(Spacer(1, 12))
+        elements.append(KeepTogether(methodology_content))
         
-        # Mosaicism section - natural flow
-        elements.append(self._create_section_header("Conditions for reporting mosaicism"))
-        elements.append(Spacer(1, 8))
-        elements.append(Paragraph(self.MOSAICISM_TEXT, self.styles['PGTABodyText']))
-        elements.append(Spacer(1, 6))
+        # Mosaicism section - keep heading and content together
+        mosaicism_content = []
+        mosaicism_content.append(self._create_section_header("Conditions for reporting mosaicism"))
+        mosaicism_content.append(Spacer(1, 8))
+        mosaicism_content.append(Paragraph(self.MOSAICISM_TEXT, self.styles['PGTABodyText']))
+        mosaicism_content.append(Spacer(1, 6))
         
         # Mosaicism bullets
         for bullet in self.MOSAICISM_BULLETS:
-            elements.append(Paragraph(f"• {bullet}", self.styles['PGTABulletText']))
-        elements.append(Spacer(1, 6))
-        elements.append(Paragraph(self.MOSAICISM_CLINICAL, self.styles['PGTABodyText']))
-        elements.append(Spacer(1, 12))
+            mosaicism_content.append(Paragraph(f"• {bullet}", self.styles['PGTABulletText']))
+        mosaicism_content.append(Spacer(1, 6))
+        mosaicism_content.append(Paragraph(self.MOSAICISM_CLINICAL, self.styles['PGTABodyText']))
+        mosaicism_content.append(Spacer(1, 12))
+        elements.append(KeepTogether(mosaicism_content))
         
-        # Limitations section - natural flow
-        elements.append(self._create_section_header("Limitations"))
-        elements.append(Spacer(1, 8))
+        # Limitations section - keep heading and content together
+        limitations_content = []
+        limitations_content.append(self._create_section_header("Limitations"))
+        limitations_content.append(Spacer(1, 8))
         for limitation in self.LIMITATIONS:
-            elements.append(Paragraph(f"• {limitation}", self.styles['PGTABulletText']))
+            limitations_content.append(Paragraph(f"• {limitation}", self.styles['PGTABulletText']))
         
-        elements.append(Spacer(1, 12))
-        elements.append(Spacer(1, 12))
+        limitations_content.append(Spacer(1, 12))
+        limitations_content.append(Spacer(1, 12))
+        elements.append(KeepTogether(limitations_content))
         
-        # References section - natural flow
-        elements.append(self._create_section_header("References"))
-        elements.append(Spacer(1, 8))
+        # References section - keep heading and content together
+        references_content = []
+        references_content.append(self._create_section_header("References"))
+        references_content.append(Spacer(1, 8))
         for idx, ref in enumerate(self.REFERENCES, 1):
-            elements.append(Paragraph(f"{idx}. {ref}", self.styles['PGTABodyText']))
+            references_content.append(Paragraph(f"{idx}. {ref}", self.styles['PGTABodyText']))
+        
+        elements.append(KeepTogether(references_content))
         
         return elements
     
@@ -656,9 +669,12 @@ class PGTAReportTemplate:
         elements.append(Spacer(1, 8))
         
         # Prepare info data with sanitation
-        def _wrap_banner(text):
+        def _wrap_banner(text, align='LEFT'):
             if not text: return ""
-            return Paragraph(str(text), self.styles['PGTABannerValueText'])
+            # Create a paragraph with proper alignment
+            style = ParagraphStyle('BannerValue', parent=self.styles['PGTABannerValueText'], 
+                                  alignment=eval(f'TA_{align}'))
+            return Paragraph(str(text), style)
 
         # Patient name and spouse name - spouse on new line
         patient_name = self._clean(patient_data.get('patient_name'))
@@ -669,21 +685,26 @@ class PGTAReportTemplate:
         info_data = [[
             self._wrap_label('Patient name'),
             _wrap_banner(':'),
-            _wrap_banner(f"<b>{combined_name}</b>"),
+            _wrap_banner(f"<b>{combined_name}</b>", 'LEFT'),
             self._wrap_label('PIN'),
             _wrap_banner(':'),
-            _wrap_banner(f"<b>{self._clean(patient_data.get('pin'))}</b>")
+            _wrap_banner(f"<b>{self._clean(patient_data.get('pin'))}</b>", 'LEFT')
         ]]
         
         # Optimized widths for detailed banner [Total: 490pt]
-        info_table = Table(info_data, colWidths=[88, 6, 149, 88, 6, 153], hAlign='LEFT')
+        # Give more space to patient name, keep PIN space adequate
+        info_table = Table(info_data, colWidths=[88, 6, 169, 68, 6, 153], hAlign='LEFT')
         info_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(self.COLORS['patient_info_bg'])),
             ('FONTNAME', (0, 0), (-1, -1), self._get_font('SegoeUI-Bold', 'Helvetica-Bold')),
             ('FONTSIZE', (0, 0), (-1, -1), 10),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'), # Standard LEFT alignment
-            ('ALIGN', (3, 0), (3, -1), 'LEFT'), # Standard LEFT alignment
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'), # Labels left-aligned
+            ('ALIGN', (1, 0), (1, -1), 'CENTER'), # Colons centered
+            ('ALIGN', (2, 0), (2, -1), 'LEFT'), # Patient name left-aligned
+            ('ALIGN', (3, 0), (3, -1), 'LEFT'), # PIN label left-aligned
+            ('ALIGN', (4, 0), (4, -1), 'CENTER'), # Colon centered
+            ('ALIGN', (5, 0), (5, -1), 'LEFT'), # PIN value left-aligned
             ('LEFTPADDING', (0, 0), (-1, -1), 0),
             ('RIGHTPADDING', (0, 0), (-1, -1), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
