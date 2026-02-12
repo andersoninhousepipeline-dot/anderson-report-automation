@@ -211,10 +211,11 @@ class PGTADocxGenerator:
         
         doc.add_paragraph() # Spacer
         
-        # Patient Info Table [85, 12, 146, 85, 12, 150] - 6 rows (spouse name combined with patient name)
+        # Patient Info Table [85, 12, 166, 65, 12, 150] - 6 rows (spouse name combined with patient name)
+        # Adjusted widths to give more space to patient name field
         info_table = doc.add_table(rows=6, cols=6)
         self._set_table_fixed_layout(info_table)
-        self._set_column_widths(info_table, [85, 12, 146, 85, 12, 150])
+        self._set_column_widths(info_table, [85, 12, 166, 65, 12, 150])
         self._populate_patient_table(info_table, patient_data)
         
         doc.add_paragraph() # Spacer
@@ -326,9 +327,21 @@ class PGTADocxGenerator:
                 p_fmt = cell.paragraphs[0].paragraph_format
                 p_fmt.space_before = Pt(2)
                 p_fmt.space_after = Pt(2)
+                
+                # Set cell alignment to match PDF
+                cell_idx = row.cells.index(cell)
+                if cell_idx in [0, 3]:  # Label columns
+                    cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+                    cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
+                elif cell_idx in [1, 4]:  # Colon columns
+                    cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+                    cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                else:  # Value columns
+                    cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+                    cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
 
     def _add_methodology_page(self, doc):
-        """Methods, Limitations, and References"""
+        """Methods, Limitations, and References with natural flow but orphan protection"""
         # Content sections
         sections = [
             ("Methodology", self.METHODOLOGY_TEXT, None),
@@ -343,27 +356,38 @@ class PGTADocxGenerator:
                 p = doc.add_paragraph()
                 self._set_paragraph_font(p, font_size=11, bold=True)
                 p.add_run(head)
+                # Only keep with next if there's content following
+                if body or bullets:
+                    p.paragraph_format.keep_with_next = True
             
             if body:
                 p = doc.add_paragraph(body)
                 self._set_paragraph_font(p, font_size=9)
                 p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                # Only keep with bullets if they exist
+                if bullets:
+                    p.paragraph_format.keep_with_next = True
                 
             if bullets:
-                for b in bullets:
+                for i, b in enumerate(bullets):
                     p = doc.add_paragraph(b, style='List Bullet')
                     self._set_paragraph_font(p, font_size=9)
                     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                    # Keep bullets together naturally
+                    if i < len(bullets) - 1:
+                        p.paragraph_format.keep_with_next = True
             doc.add_paragraph()
 
     def _add_embryo_page(self, doc, patient_data, embryo_data):
         """Individual Embryo Result Page with exact PDF metrics"""
         doc.add_page_break()
         
-        # 1. Banner [Total: 490pt]
+        # 1. Banner [Total: 490pt] - Match exact cover page positioning
         banner = doc.add_table(rows=2, cols=6)
         self._set_table_fixed_layout(banner)
-        self._set_column_widths(banner, [88, 6, 149, 88, 6, 153])
+        self._set_column_widths(banner, [85, 12, 166, 65, 12, 150])
+        # Ensure table is aligned to the left like cover page
+        banner.alignment = WD_ALIGN_PARAGRAPH.LEFT
         self._populate_patient_table(banner, patient_data)
 
         doc.add_paragraph()
