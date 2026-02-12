@@ -5215,9 +5215,6 @@ Use null for fields not found. Return ONLY valid JSON."""
                         else:
                             # Use the SEX column value exactly as provided (e.g., "MOSAIC GAIN (52%)", "Normal", "Abnormal")
                             sex_chr_val = sex_raw
-                        else:
-                            # Use the SEX column value exactly as provided (e.g., "MOSAIC GAIN (52%)", "Normal", "Abnormal")
-                            sex_chr_val = sex_raw
 
                         # Auto-match CNV image (Restored)
                         cnv_image_path = None
