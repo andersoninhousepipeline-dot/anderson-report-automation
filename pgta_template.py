@@ -608,51 +608,48 @@ class PGTAReportTemplate:
         return table
     
     def _build_methodology_page(self):
-        """Build methodology and static content page - sections with headings kept together"""
+        """Build methodology and static content page - protect from orphaned headings"""
         elements = []
         
-        # Methodology section - keep heading and content together
-        methodology_content = []
-        methodology_content.append(self._create_section_header("Methodology"))
-        methodology_content.append(Spacer(1, 8))
-        methodology_content.append(Paragraph(self.METHODOLOGY_TEXT, self.styles['PGTABodyText']))
-        methodology_content.append(Spacer(1, 12))
-        elements.append(KeepTogether(methodology_content))
+        # Methodology section - protect heading from orphaning
+        elements.append(self._create_section_header("Methodology"))
+        elements.append(Spacer(1, 8))
+        elements.append(Paragraph(self.METHODOLOGY_TEXT, self.styles['PGTABodyText']))
+        elements.append(Spacer(1, 12))
         
-        # Mosaicism section - keep heading and content together
-        mosaicism_content = []
-        mosaicism_content.append(self._create_section_header("Conditions for reporting mosaicism"))
-        mosaicism_content.append(Spacer(1, 8))
-        mosaicism_content.append(Paragraph(self.MOSAICISM_TEXT, self.styles['PGTABodyText']))
-        mosaicism_content.append(Spacer(1, 6))
+        # Mosaicism section - protect heading from orphaning
+        elements.append(self._create_section_header("Conditions for reporting mosaicism"))
+        elements.append(Spacer(1, 8))
+        elements.append(Paragraph(self.MOSAICISM_TEXT, self.styles['PGTABodyText']))
+        elements.append(Spacer(1, 6))
         
-        # Mosaicism bullets
+        # Mosaicism bullets - natural flow
         for bullet in self.MOSAICISM_BULLETS:
-            mosaicism_content.append(Paragraph(f"• {bullet}", self.styles['PGTABulletText']))
-        mosaicism_content.append(Spacer(1, 6))
-        mosaicism_content.append(Paragraph(self.MOSAICISM_CLINICAL, self.styles['PGTABodyText']))
-        mosaicism_content.append(Spacer(1, 12))
-        elements.append(KeepTogether(mosaicism_content))
+            elements.append(Paragraph(f"• {bullet}", self.styles['PGTABulletText']))
+        elements.append(Spacer(1, 6))
+        elements.append(Paragraph(self.MOSAICISM_CLINICAL, self.styles['PGTABodyText']))
+        elements.append(Spacer(1, 12))
         
-        # Limitations section - keep heading and content together
-        limitations_content = []
-        limitations_content.append(self._create_section_header("Limitations"))
-        limitations_content.append(Spacer(1, 8))
+        # Add conditional page break before limitations if needed
+        elements.append(CondPageBreak(height=100))
+        
+        # Limitations section - protect heading from orphaning
+        elements.append(self._create_section_header("Limitations"))
+        elements.append(Spacer(1, 8))
         for limitation in self.LIMITATIONS:
-            limitations_content.append(Paragraph(f"• {limitation}", self.styles['PGTABulletText']))
+            elements.append(Paragraph(f"• {limitation}", self.styles['PGTABulletText']))
         
-        limitations_content.append(Spacer(1, 12))
-        limitations_content.append(Spacer(1, 12))
-        elements.append(KeepTogether(limitations_content))
+        elements.append(Spacer(1, 12))
+        elements.append(Spacer(1, 12))
         
-        # References section - keep heading and content together
-        references_content = []
-        references_content.append(self._create_section_header("References"))
-        references_content.append(Spacer(1, 8))
+        # Add conditional page break before references if needed
+        elements.append(CondPageBreak(height=100))
+        
+        # References section - protect heading from orphaning
+        elements.append(self._create_section_header("References"))
+        elements.append(Spacer(1, 8))
         for idx, ref in enumerate(self.REFERENCES, 1):
-            references_content.append(Paragraph(f"{idx}. {ref}", self.styles['PGTABodyText']))
-        
-        elements.append(KeepTogether(references_content))
+            elements.append(Paragraph(f"{idx}. {ref}", self.styles['PGTABodyText']))
         
         return elements
     
@@ -683,32 +680,26 @@ class PGTAReportTemplate:
         combined_name = f"{patient_name}<br/>{spouse_name}" if spouse_name else patient_name
 
         info_data = [[
-            self._wrap_label('Patient name'),
-            _wrap_banner(':'),
-            _wrap_banner(f"<b>{combined_name}</b>", 'LEFT'),
-            self._wrap_label('PIN'),
-            _wrap_banner(':'),
-            _wrap_banner(f"<b>{self._clean(patient_data.get('pin'))}</b>", 'LEFT')
+            self._wrap_text('<b>Patient name:</b>', True),
+            self._wrap_text(f"<b>{combined_name}</b>", max_width=160, align='LEFT'),
+            self._wrap_text('<b>PIN:</b>', True),
+            self._wrap_text(f"<b>{self._clean(patient_data.get('pin'))}</b>", max_width=144, align='LEFT')
         ]]
         
         # Optimized widths for detailed banner [Total: 490pt]
-        # Give more space to patient name, keep PIN space adequate
-        info_table = Table(info_data, colWidths=[88, 6, 169, 68, 6, 153], hAlign='LEFT')
+        # Now 4 columns with colons embedded in labels
+        info_table = Table(info_data, colWidths=[85, 172, 65, 168], hAlign='LEFT')
         info_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(self.COLORS['patient_info_bg'])),
             ('FONTNAME', (0, 0), (-1, -1), self._get_font('SegoeUI-Bold', 'Helvetica-Bold')),
             ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'), # Labels left-aligned
-            ('ALIGN', (1, 0), (1, -1), 'CENTER'), # Colons centered
-            ('ALIGN', (2, 0), (2, -1), 'LEFT'), # Patient name left-aligned
-            ('ALIGN', (3, 0), (3, -1), 'LEFT'), # PIN label left-aligned
-            ('ALIGN', (4, 0), (4, -1), 'CENTER'), # Colon centered
-            ('ALIGN', (5, 0), (5, -1), 'LEFT'), # PIN value left-aligned
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'), # Match cover page - TOP alignment
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'), # All cells left-aligned
             ('LEFTPADDING', (0, 0), (-1, -1), 0),
             ('RIGHTPADDING', (0, 0), (-1, -1), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTMARGIN', (0, 0), (-1, -1), 0), # Force left alignment
         ]))
         elements.append(info_table)
         elements.append(Spacer(1, 8))
