@@ -680,13 +680,12 @@ class PGTAReportTemplate:
         combined_name = f"{patient_name}<br/>{spouse_name}" if spouse_name else patient_name
 
         info_data = [[
-            self._wrap_text(f"<b>Patient name:</b> {combined_name}", max_width=247, align='LEFT'),
-            self._wrap_text(f"<b>PIN:</b> {self._clean(patient_data.get('pin'))}", max_width=243, align='LEFT')
+            self._wrap_text(f"<b>Patient name:</b> {combined_name}<br/><b>PIN:</b> {self._clean(patient_data.get('pin'))}", max_width=490, align='LEFT')
         ]]
         
         # Optimized widths for detailed banner [Total: 490pt]
-        # Now 2 columns with label+colon and value in same cell
-        info_table = Table(info_data, colWidths=[247, 243], hAlign='LEFT')
+        # Now 1 column with all content in single cell
+        info_table = Table(info_data, colWidths=[490], hAlign='LEFT')
         info_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(self.COLORS['patient_info_bg'])),
             ('FONTNAME', (0, 0), (-1, -1), self._get_font('SegoeUI-Bold', 'Helvetica-Bold')),
