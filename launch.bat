@@ -37,7 +37,7 @@ python -c "import PyQt6" >nul 2>&1
 if %errorlevel% neq 0 (
     echo Installing core packages...
     pip install --upgrade pip
-    pip install PyQt6 reportlab PyPDF2 pdfplumber python-docx pandas openpyxl pyarrow Pillow numpy requests
+    pip install PyQt6>=6.6.0 PyQt6-Qt6>=6.6.0 reportlab>=4.0.0 PyPDF2>=3.0.0 pdfplumber>=0.10.0 python-docx>=1.0.0 pandas>=2.0.0 openpyxl>=3.1.0 pyarrow>=14.0.0 Pillow>=10.0.0 numpy>=1.24.0 requests>=2.31.0
     echo.
     echo Core packages installed. Starting app...
     echo EasyOCR will be installed in background later.
