@@ -68,7 +68,7 @@ echo.
 REM Install core dependencies first (without easyocr)
 echo [*] Installing core dependencies...
 echo.
-python -m pip install PyQt6 reportlab PyPDF2 pdfplumber python-docx pandas openpyxl pyarrow Pillow numpy requests
+python -m pip install PyQt6>=6.6.0 PyQt6-Qt6>=6.6.0 reportlab>=4.0.0 PyPDF2>=3.0.0 pdfplumber>=0.10.0 python-docx>=1.0.0 pandas>=2.0.0 openpyxl>=3.1.0 pyarrow>=14.0.0 Pillow>=10.0.0 numpy>=1.24.0 requests>=2.31.0
 
 if errorlevel 1 (
     echo.
@@ -83,7 +83,7 @@ REM Try to install EasyOCR (optional, may fail on some systems)
 echo [*] Installing EasyOCR (optional, for TRF verification)...
 echo     This may take a few minutes...
 echo.
-python -m pip install easyocr
+python -m pip install easyocr>=1.7.0
 
 if errorlevel 1 (
     echo.
