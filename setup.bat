@@ -34,6 +34,18 @@ echo [OK] Python found
 %PYCMD% --version
 echo.
 
+REM Check 64-bit architecture
+echo [*] Checking Python architecture...
+%PYCMD% -c "import struct; bits=struct.calcsize('P')*8; print(f'  Architecture: {bits}-bit'); exit(0 if bits==64 else 1)"
+if errorlevel 1 (
+    echo [ERROR] 32-bit Python detected! PyQt6 requires 64-bit Python.
+    echo         Please uninstall Python and reinstall the 64-bit version.
+    echo         Download: https://www.python.org/downloads/
+    pause
+    exit /b 1
+)
+echo.
+
 REM Remove old venv if exists
 if exist ".venv" (
     echo [*] Removing old virtual environment...
@@ -68,7 +80,7 @@ echo.
 REM Install core dependencies first (without easyocr)
 echo [*] Installing core dependencies...
 echo.
-python -m pip install PyQt6>=6.6.0 PyQt6-Qt6>=6.6.0 reportlab>=4.0.0 PyPDF2>=3.0.0 pdfplumber>=0.10.0 python-docx>=1.0.0 pandas>=2.0.0 openpyxl>=3.1.0 pyarrow>=14.0.0 Pillow>=10.0.0 numpy>=1.24.0 requests>=2.31.0
+python -m pip install PyQt6 reportlab PyPDF2 pdfplumber python-docx pandas openpyxl Pillow numpy requests
 
 if errorlevel 1 (
     echo.
@@ -83,7 +95,7 @@ REM Try to install EasyOCR (optional, may fail on some systems)
 echo [*] Installing EasyOCR (optional, for TRF verification)...
 echo     This may take a few minutes...
 echo.
-python -m pip install easyocr>=1.7.0
+python -m pip install easyocr
 
 if errorlevel 1 (
     echo.
