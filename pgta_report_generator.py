@@ -63,22 +63,24 @@ except ImportError:
 
 # EasyOCR - Simple, accurate, works offline (RECOMMENDED)
 # Note: EasyOCR requires PyTorch which may have issues on some Windows systems
+# We catch ALL exceptions to prevent PyTorch DLL/RuntimeError from crashing startup
 try:
     import easyocr
     EASYOCR_AVAILABLE = True
-except (ImportError, OSError) as e:
+except Exception as e:
     EASYOCR_AVAILABLE = False
-    if "OSError" in str(type(e).__name__) or "DLL" in str(e):
-        print("Warning: EasyOCR/PyTorch failed to load (DLL error).")
+    err_str = str(e)
+    err_type = type(e).__name__
+    if "DLL" in err_str or "OSError" in err_type or "RuntimeError" in err_type:
+        print(f"Warning: EasyOCR/PyTorch failed to load ({err_type}).")
         print("         TRF verification will be disabled.")
         print("         To fix: Install Visual C++ Redistributable from Microsoft")
         print("         https://aka.ms/vs/17/release/vc_redist.x64.exe")
+    elif "ImportError" in err_type or "ModuleNotFoundError" in err_type:
+        print("Info: easyocr not installed. TRF verification disabled.")
     else:
-        print("Info: easyocr not found. TRF verification disabled.")
-except Exception as e:
-    EASYOCR_AVAILABLE = False
-    print(f"Warning: EasyOCR failed to load: {e}")
-    print("         TRF verification will be disabled.")
+        print(f"Warning: EasyOCR failed to load: {e}")
+        print("         TRF verification will be disabled.")
 
 # Ollama - Local LLM with vision (LLaVA model)
 try:
@@ -91,7 +93,6 @@ import base64
 import re
 from difflib import SequenceMatcher
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class ClickOnlyComboBox(QComboBox):
     """Subclass of QComboBox that ignores mouse wheel events to prevent accidental changes when scrolling."""
@@ -1809,7 +1810,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                 data['version'] = "1.0"
                 data['timestamp'] = datetime.now().isoformat()
                 
-                with open(path, 'w') as f:
+                with open(path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4)
                 self.statusBar().showMessage(f"Draft saved to {path}")
                 QMessageBox.information(self, "Draft Saved", f"Draft saved successfully to:\n{path}")
@@ -1823,7 +1824,7 @@ class PGTAReportGeneratorApp(QMainWindow):
             return
             
         try:
-            with open(path, 'r') as f:
+            with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
             self.populate_manual_form(data)
@@ -5711,7 +5712,7 @@ Use null for fields not found. Return ONLY valid JSON."""
         path, _ = QFileDialog.getSaveFileName(self, "Save Patient Draft", default_name, "JSON Files (*.json)")
         if path:
             try:
-                with open(path, 'w') as f:
+                with open(path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4)
                 QMessageBox.information(self, "Success", f"Patient draft saved to {os.path.basename(path)}")
             except Exception as e:
@@ -5855,7 +5856,12 @@ Use null for fields not found. Return ONLY valid JSON."""
             layout.addWidget(label)
         
             open_btn = QPushButton("Open with System Viewer")
-            open_btn.clicked.connect(lambda: os.startfile(pdf_path) if os.name == 'nt' else os.system(f'xdg-open "{pdf_path}"'))
+            def _open_pdf(p=pdf_path):
+                if os.name == 'nt':
+                    os.startfile(p)
+                else:
+                    subprocess.Popen(['xdg-open', p])
+            open_btn.clicked.connect(_open_pdf)
             layout.addWidget(open_btn)
     
         close_btn = QPushButton("Close")
@@ -5912,7 +5918,7 @@ Use null for fields not found. Return ONLY valid JSON."""
         path, _ = QFileDialog.getSaveFileName(self, "Save Batch Draft", "", "JSON Files (*.json)")
         if path:
             try:
-                with open(path, 'w') as f:
+                with open(path, 'w', encoding='utf-8') as f:
                     json.dump(self.bulk_patient_data_list, f, indent=4)
                 QMessageBox.information(self, "Success", f"Batch draft saved to {os.path.basename(path)}")
             except Exception as e:
@@ -5923,7 +5929,7 @@ Use null for fields not found. Return ONLY valid JSON."""
         path, _ = QFileDialog.getOpenFileName(self, "Load Batch Draft", "", "JSON Files (*.json)")
         if path:
             try:
-                with open(path, 'r') as f:
+                with open(path, 'r', encoding='utf-8') as f:
                     self.bulk_patient_data_list = json.load(f)
                 
                 # Populate batch list
@@ -6092,8 +6098,25 @@ Use null for fields not found. Return ONLY valid JSON."""
             
         except Exception as e:
             import traceback
-            traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Failed to load data: {str(e)}")
+            import logging
+            
+            error_msg = traceback.format_exc()
+            logging.error("="*60)
+            logging.error("ERROR in parse_bulk_excel:")
+            logging.error(error_msg)
+            logging.error("="*60)
+            
+            # Show detailed error to user
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Icon.Critical)
+            msg.setWindowTitle("Excel Parsing Error")
+            msg.setText("Failed to parse the Excel file.")
+            msg.setInformativeText(f"Error: {str(e)}")
+            msg.setDetailedText(f"File: {file_path}\n\n{error_msg}")
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg.exec()
+            
+            self.statusBar().showMessage(f"Error loading file: {str(e)}")
             
     
     
@@ -6295,9 +6318,6 @@ Use null for fields not found. Return ONLY valid JSON."""
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            import subprocess
-            import platform
-            
             output_dir = self.output_dir_label.text()
             if platform.system() == 'Windows':
                 os.startfile(output_dir)
@@ -6329,15 +6349,135 @@ Use null for fields not found. Return ONLY valid JSON."""
 
 
 def main():
-    """Main entry point"""
-    app = QApplication(sys.argv)
-    app.setApplicationName("PGT-A Report Generator")
-    app.setOrganizationName("PGTA")
-
-    window = PGTAReportGeneratorApp()
-    window.show()
-
-    sys.exit(app.exec())
+    """Main entry point with comprehensive error handling for Windows"""
+    import traceback
+    import logging
+    
+    # Setup logging to file for Windows debugging
+    log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'startup.log')
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file, mode='w', encoding='utf-8'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    
+    logging.info("="*60)
+    logging.info("PGT-A Report Generator - Starting")
+    logging.info("="*60)
+    logging.info(f"Platform: {platform.system()} {platform.release()}")
+    logging.info(f"Python: {sys.version}")
+    logging.info(f"Working Directory: {os.getcwd()}")
+    
+    try:
+        # Enable high-DPI scaling on Windows for crisp rendering
+        if platform.system() == 'Windows':
+            os.environ.setdefault('QT_ENABLE_HIGHDPI_SCALING', '1')
+            logging.info("Enabled High-DPI scaling for Windows")
+        
+        # Ensure UTF-8 encoding on Windows
+        if sys.platform == 'win32':
+            os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+            os.environ.setdefault('PYTHONUTF8', '1')
+            logging.info("Set UTF-8 encoding for Windows")
+        
+        # Validate critical dependencies
+        logging.info("Checking critical dependencies...")
+        try:
+            from PyQt6.QtWidgets import QApplication
+            logging.info("✓ PyQt6 imported successfully")
+        except ImportError as e:
+            logging.error(f"✗ PyQt6 import failed: {e}")
+            print("\n" + "="*60)
+            print("ERROR: PyQt6 is not installed or failed to load!")
+            print("="*60)
+            print("\nThis is usually caused by:")
+            print("  1. PyQt6 not installed (run setup.bat)")
+            print("  2. 32-bit Python (PyQt6 requires 64-bit)")
+            print("  3. Corrupted virtual environment")
+            print("\nSolutions:")
+            print("  1. Delete .venv folder and run launch.bat again")
+            print("  2. Install 64-bit Python from python.org")
+            print("  3. Run: pip install PyQt6>=6.6.0")
+            print("\nPress Enter to exit...")
+            input()
+            sys.exit(1)
+        
+        # Check assets directory
+        assets_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'pgta')
+        if not os.path.exists(assets_dir):
+            logging.error(f"✗ Assets directory not found: {assets_dir}")
+            print("\n" + "="*60)
+            print("ERROR: Assets directory is missing!")
+            print("="*60)
+            print(f"\nExpected location: {assets_dir}")
+            print("\nThe application cannot run without the assets folder.")
+            print("Please ensure the 'assets/pgta' folder exists.")
+            print("\nPress Enter to exit...")
+            input()
+            sys.exit(1)
+        else:
+            logging.info(f"✓ Assets directory found: {assets_dir}")
+        
+        logging.info("Creating QApplication...")
+        app = QApplication(sys.argv)
+        app.setApplicationName("PGT-A Report Generator")
+        app.setOrganizationName("PGTA")
+        logging.info("✓ QApplication created successfully")
+        
+        logging.info("Creating main window...")
+        window = PGTAReportGeneratorApp()
+        logging.info("✓ Main window created successfully")
+        
+        logging.info("Showing main window...")
+        window.show()
+        logging.info("✓ Main window shown successfully")
+        
+        logging.info("Application started successfully - entering event loop")
+        logging.info("="*60)
+        
+        # Enter event loop
+        exit_code = app.exec()
+        logging.info(f"Application exited with code: {exit_code}")
+        sys.exit(exit_code)
+        
+    except Exception as e:
+        # Catch ANY exception and log it
+        error_msg = traceback.format_exc()
+        logging.error("FATAL ERROR during startup:")
+        logging.error(error_msg)
+        
+        # Show error dialog if possible
+        try:
+            from PyQt6.QtWidgets import QApplication, QMessageBox
+            if not QApplication.instance():
+                app = QApplication(sys.argv)
+            
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Icon.Critical)
+            msg.setWindowTitle("PGT-A Report Generator - Startup Error")
+            msg.setText("The application failed to start due to an error.")
+            msg.setInformativeText(str(e))
+            msg.setDetailedText(error_msg)
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg.exec()
+        except:
+            # If we can't show a dialog, print to console
+            print("\n" + "="*60)
+            print("FATAL ERROR - Application failed to start!")
+            print("="*60)
+            print(f"\nError: {e}")
+            print("\nFull traceback:")
+            print(error_msg)
+            print("\n" + "="*60)
+            print(f"Error details saved to: {log_file}")
+            print("="*60)
+            print("\nPress Enter to exit...")
+            input()
+        
+        sys.exit(1)
 
 
 if __name__ == "__main__":
