@@ -45,15 +45,49 @@ import pandas as pd
 from pgta_template import PGTAReportTemplate
 from pgta_docx_generator import PGTADocxGenerator
 
-# TRF Verification imports - REMOVED 2026-02-16
-# Reason: EasyOCR/PyTorch causes Windows crashes due to Visual C++ dependencies
-# Backup: See dev_tools/trf_verification_backup/ for restoration
-# All TRF verification features have been disabled
+# TRF Verification imports
+try:
+    import pytesseract
+    from PIL import Image
+    TESSERACT_AVAILABLE = True
+except ImportError:
+    TESSERACT_AVAILABLE = False
+    # Silently skip - we primarily use EasyOCR now
 
-EASYOCR_AVAILABLE = False
-TESSERACT_AVAILABLE = False
-PDFPLUMBER_AVAILABLE = False
-OLLAMA_AVAILABLE = False
+try:
+    import pdfplumber
+    PDFPLUMBER_AVAILABLE = True
+except ImportError:
+    PDFPLUMBER_AVAILABLE = False
+    print("Warning: pdfplumber not found. PDF features may be limited.")
+
+# EasyOCR - Simple, accurate, works offline (RECOMMENDED)
+# Note: EasyOCR requires PyTorch which may have issues on some Windows systems
+# We catch ALL exceptions to prevent PyTorch DLL/RuntimeError from crashing startup
+try:
+    import easyocr
+    EASYOCR_AVAILABLE = True
+except Exception as e:
+    EASYOCR_AVAILABLE = False
+    err_str = str(e)
+    err_type = type(e).__name__
+    if "DLL" in err_str or "OSError" in err_type or "RuntimeError" in err_type:
+        print(f"Warning: EasyOCR/PyTorch failed to load ({err_type}).")
+        print("         TRF verification will be disabled.")
+        print("         To fix: Install Visual C++ Redistributable from Microsoft")
+        print("         https://aka.ms/vs/17/release/vc_redist.x64.exe")
+    elif "ImportError" in err_type or "ModuleNotFoundError" in err_type:
+        print("Info: easyocr not installed. TRF verification disabled.")
+    else:
+        print(f"Warning: EasyOCR failed to load: {e}")
+        print("         TRF verification will be disabled.")
+
+# Ollama - Local LLM with vision (LLaVA model)
+try:
+    import requests
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
 
 import base64
 import re
@@ -1074,10 +1108,47 @@ class PGTAReportGeneratorApp(QMainWindow):
         draft_layout.addWidget(load_draft_btn)
         left_layout.addLayout(draft_layout)
         
-        # Bulk TRF Verification Section - REMOVED 2026-02-16
-        # Reason: Causes Windows crashes, see dev_tools/trf_verification_backup/
-        # All TRF UI and methods removed
+        # Bulk TRF Verification Section
+        trf_bulk_group = QGroupBox("📋 Bulk TRF Verification")
+        trf_bulk_layout = QVBoxLayout()
+        trf_bulk_group.setLayout(trf_bulk_layout)
         
+        # TRF upload row
+        trf_upload_row = QHBoxLayout()
+        self.bulk_trf_label = QLabel("No TRFs uploaded")
+        self.bulk_trf_label.setStyleSheet("color: #666; font-style: italic;")
+        trf_upload_row.addWidget(self.bulk_trf_label, 1)
+        
+        upload_bulk_trf_btn = QPushButton("📁 Upload TRFs")
+        upload_bulk_trf_btn.clicked.connect(self.upload_bulk_trf)
+        trf_upload_row.addWidget(upload_bulk_trf_btn)
+        trf_bulk_layout.addLayout(trf_upload_row)
+        
+        # TRF action buttons
+        trf_action_row = QHBoxLayout()
+        self.bulk_trf_verify_all_btn = QPushButton("🔄 Verify All")
+        self.bulk_trf_verify_all_btn.setEnabled(False)
+        self.bulk_trf_verify_all_btn.clicked.connect(self.verify_all_bulk_trf)
+        trf_action_row.addWidget(self.bulk_trf_verify_all_btn)
+        
+        trf_mgmt_btn = QPushButton("⚙️ TRF Manager")
+        trf_mgmt_btn.clicked.connect(self.show_bulk_trf_verification_dialog)
+        trf_action_row.addWidget(trf_mgmt_btn)
+        trf_bulk_layout.addLayout(trf_action_row)
+        
+        # TRF status display
+        self.bulk_trf_status = QTextBrowser()
+        self.bulk_trf_status.setMaximumHeight(60)
+        self.bulk_trf_status.setStyleSheet("background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; font-size: 11px;")
+        self.bulk_trf_status.setHtml("<i style='color:#888;'>Upload TRF files to verify patient data</i>")
+        trf_bulk_layout.addWidget(self.bulk_trf_status)
+        
+        left_layout.addWidget(trf_bulk_group)
+        
+        # Initialize bulk TRF storage
+        self.bulk_trf_files = []
+        self.patient_trf_mapping = {}
+        self.pending_bulk_trfs = []
         
         # Logo selection for bulk
         logo_layout = QHBoxLayout()
@@ -2783,14 +2854,6 @@ Use null for fields not found. Return ONLY valid JSON."""
         return results, all_correct, has_suggestions, None
     
     # ==================== Bulk TRF Verification ====================
-    # ⚠️ TRF VERIFICATION METHODS DISABLED 2026-02-16 ⚠️
-    # Reason: EasyOCR/PyTorch causes Windows crashes
-    # Backup: See dev_tools/trf_verification_backup/
-    # 
-    # All methods below are kept for reference but are non-functional
-    # since the UI components have been removed.
-    # To restore: See TRF_FEATURE_DOCUMENTATION.md
-    # ================================================================
     
     def upload_bulk_trf(self):
         """Upload TRF files - supports single multi-page PDF or multiple individual files"""
