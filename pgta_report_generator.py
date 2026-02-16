@@ -5301,38 +5301,11 @@ Use null for fields not found. Return ONLY valid JSON."""
         patient_form.addRow("Indication:", self.batch_indication)
         patient_form.addRow("Results Summary Comment:", self.batch_results_summary_comment)
         
-        # --- TRF Verification Section for Batch ---
-        trf_group = QGroupBox("TRF Verification")
-        trf_layout = QVBoxLayout()
-        trf_group.setLayout(trf_layout)
         
-        trf_upload_layout = QHBoxLayout()
-        self.batch_trf_path_label = QLabel("No TRF uploaded")
-        self.batch_trf_path_label.setStyleSheet("color: #666; font-style: italic;")
-        trf_upload_layout.addWidget(self.batch_trf_path_label, 1)
+        # TRF Verification Section - REMOVED 2026-02-16
+        # Reason: Causes Windows crashes, see dev_tools/trf_verification_backup/
         
-        batch_trf_upload_btn = QPushButton("📄 Upload TRF")
-        batch_trf_upload_btn.clicked.connect(self.upload_trf_batch)
-        trf_upload_layout.addWidget(batch_trf_upload_btn)
-        
-        batch_trf_verify_btn = QPushButton("✓ Verify")
-        batch_trf_verify_btn.clicked.connect(self.verify_trf_batch)
-        trf_upload_layout.addWidget(batch_trf_verify_btn)
-        
-        trf_layout.addLayout(trf_upload_layout)
-        
-        # Verification result display for batch
-        self.batch_trf_result_text = QTextBrowser()
-        self.batch_trf_result_text.setMaximumHeight(120)
-        self.batch_trf_result_text.setStyleSheet("background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 4px;")
-        self.batch_trf_result_text.setHtml("<i style='color:#888;'>Upload a TRF to verify patient details</i>")
-        trf_layout.addWidget(self.batch_trf_result_text)
-        
-        patient_form.addRow("", trf_group)
-        
-        # Store batch TRF path
-        self.batch_trf_path = None
-    
+
         self.batch_editor_layout.addWidget(patient_group)
     
         # Embryos Section with ALL fields
