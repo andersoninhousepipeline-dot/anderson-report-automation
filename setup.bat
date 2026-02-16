@@ -119,10 +119,6 @@ echo ===========================================
 echo.
 echo To run the application, double-click: launch.bat
 echo.
-echo NOTE: If you see PyTorch/DLL errors when running:
-echo   Install Visual C++ Redistributable from:
-echo   https://aka.ms/vs/17/release/vc_redist.x64.exe
-echo.
 pause
 
 
