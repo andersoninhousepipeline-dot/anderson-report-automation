@@ -80,24 +80,38 @@ echo "🚀 Starting PGT-A Report Generator..."
 echo "==========================================="
 echo ""
 
+# Function to show error details
+show_error() {
+    EXIT_CODE=$?
+    if [ $EXIT_CODE -ne 0 ] && [ $EXIT_CODE -ne 130 ]; then
+        echo ""
+        echo "❌ [ERROR] The application crashed (exit code: $EXIT_CODE)"
+        echo ""
+        if [ -s "run_error.log" ]; then
+            echo "Error details:"
+            echo "-------------------------------------------"
+            cat run_error.log
+            echo "-------------------------------------------"
+        else
+            echo "No error log found or log is empty."
+        fi
+        echo ""
+        echo "Common fixes:"
+        echo "  1. Update packages: pip install -r requirements.txt --upgrade"
+        echo "  2. Reinstall venv: rm -rf .venv && ./launch.sh"
+        echo ""
+    fi
+}
+
+# Trap exit to show error
+trap show_error EXIT
+
 # Launch the application
 python3 pgta_report_generator.py 2>run_error.log
 
 EXIT_CODE=$?
-if [ $EXIT_CODE -ne 0 ]; then
-    echo ""
-    echo "❌ [ERROR] The application crashed (exit code: $EXIT_CODE)"
-    echo ""
-    echo "Error details:"
-    echo "-------------------------------------------"
-    cat run_error.log
-    echo "-------------------------------------------"
-    echo ""
-    echo "Common fixes:"
-    echo "  1. Update packages: pip install -r requirements.txt --upgrade"
-    echo "  2. Reinstall venv: rm -rf .venv && ./launch.sh"
-    echo ""
-fi
+# Explicitly exit with the app's exit code to trigger the trap
+exit $EXIT_CODE
 
 deactivate 2>/dev/null || true
 echo ""
