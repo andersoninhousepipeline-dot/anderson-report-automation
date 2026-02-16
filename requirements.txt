@@ -25,9 +25,7 @@ numpy>=1.24.0
 # HTTP requests
 requests>=2.31.0
 
-# OCR for TRF Verification (OPTIONAL)
-# Note: EasyOCR requires PyTorch which can have issues on some Windows systems
-# If PyTorch fails to load, the app will still work but TRF verification is disabled
-# To fix PyTorch DLL errors on Windows, install Visual C++ Redistributable:
-# https://aka.ms/vs/17/release/vc_redist.x64.exe
-easyocr>=1.7.0
+# OCR for TRF Verification - REMOVED 2026-02-16
+# Reason: Causes Windows crashes due to PyTorch Visual C++ dependencies
+# Backup: See dev_tools/trf_verification_backup/ for restoration
+# easyocr>=1.7.0
