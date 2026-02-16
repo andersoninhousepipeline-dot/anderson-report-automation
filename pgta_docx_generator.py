@@ -322,6 +322,7 @@ class PGTADocxGenerator:
             
             for cell in row.cells:
                 self._set_cell_background(cell, "F1F1F7")
+                cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
                 self._set_paragraph_font(cell.paragraphs[0], font_name="Segoe UI", font_size=10, bold=True)
                 p_fmt = cell.paragraphs[0].paragraph_format
                 p_fmt.space_before = Pt(2)
