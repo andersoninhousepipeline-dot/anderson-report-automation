@@ -16,3 +16,12 @@ test_report.pdf
 
 # Virtual environment
 .venv/
+
+# Report Comparison
+Comparison/
+comparison_report_*.html
+comparison_log_*.md
+comparison_dashboard.html
+comparison_log.md
+comparison_results.md
+comparison_report.html
