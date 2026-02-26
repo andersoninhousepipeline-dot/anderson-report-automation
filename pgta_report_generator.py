@@ -27,7 +27,8 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QMessageBox, QProgressBar, QProgressDialog,
     QGroupBox, QFormLayout, QScrollArea, QCheckBox, QSpinBox,
     QComboBox, QListWidget, QListWidgetItem, QStyle, QGridLayout,
-    QSplitter, QTextBrowser, QRadioButton, QDialog, QDialogButtonBox, QHeaderView
+    QSplitter, QTextBrowser, QRadioButton, QDialog, QDialogButtonBox, QHeaderView,
+    QFrame, QSizePolicy
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings, QTimer
 from PyQt6.QtGui import QPixmap, QIcon, QColor, QBrush, QFont
@@ -44,6 +45,7 @@ import pandas as pd
 # We will keep the structure but use ReportLab classes
 from pgta_template import PGTAReportTemplate
 from pgta_docx_generator import PGTADocxGenerator
+from report_comparator import PGTAReportComparator
 
 # TRF Verification imports - REMOVED 2026-02-16
 # Reason: EasyOCR/PyTorch causes Windows crashes due to Visual C++ dependencies
@@ -328,6 +330,7 @@ class PGTAReportGeneratorApp(QMainWindow):
         # Create tabs
         self.manual_entry_tab = self.create_manual_entry_tab()
         self.bulk_upload_tab = self.create_bulk_upload_tab()
+        self.comparison_tab = self.create_comparison_tab()
         self.user_guide_tab = self.create_user_guide_tab()
         
         self.tabs.addTab(self.manual_entry_tab, "Manual Entry")
@@ -336,8 +339,11 @@ class PGTAReportGeneratorApp(QMainWindow):
         self.tabs.addTab(self.bulk_upload_tab, "Bulk Upload")
         self.tabs.setTabIcon(1, self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogListView))
         
+        self.tabs.addTab(self.comparison_tab, "Report Comparison")
+        self.tabs.setTabIcon(2, self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
+        
         self.tabs.addTab(self.user_guide_tab, "User Guide")
-        self.tabs.setTabIcon(2, self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation))
+        self.tabs.setTabIcon(3, self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation))
         
         # Status bar
         self.statusBar().showMessage("Ready")
@@ -1154,6 +1160,137 @@ class PGTAReportGeneratorApp(QMainWindow):
         main_layout.addWidget(content_group)
         
         return tab
+
+    def create_comparison_tab(self):
+        """Create report comparison tab"""
+        tab = QWidget()
+        main_layout = QVBoxLayout()
+        tab.setLayout(main_layout)
+        
+        # Mode Selection
+        mode_group = QGroupBox("Select Comparison Mode")
+        mode_layout = QHBoxLayout()
+        mode_group.setLayout(mode_layout)
+        self.dir_mode_radio = QRadioButton("Directory Mode (Bulk)")
+        self.file_mode_radio = QRadioButton("Individual File Mode")
+        self.dir_mode_radio.setChecked(True)
+        self.dir_mode_radio.toggled.connect(self.toggle_comparison_mode)
+        mode_layout.addWidget(self.dir_mode_radio)
+        mode_layout.addWidget(self.file_mode_radio)
+        main_layout.addWidget(mode_group)
+        
+        # 1. Directory Selection (Directory Mode)
+        self.dir_selection_group = QGroupBox("1. Select Report Directories")
+        dir_layout = QVBoxLayout()
+        self.dir_selection_group.setLayout(dir_layout)
+        
+        m_row = QHBoxLayout()
+        self.manual_reports_label = QLabel("No directory selected")
+        self.manual_reports_label.setStyleSheet("padding: 5px; border: 1px solid #ccc; background: white;")
+        browse_m_btn = QPushButton("Select Manual Folder")
+        browse_m_btn.clicked.connect(self.browse_manual_reports)
+        m_row.addWidget(QLabel("Manual:"), 0)
+        m_row.addWidget(self.manual_reports_label, 1)
+        m_row.addWidget(browse_m_btn, 0)
+        dir_layout.addLayout(m_row)
+        
+        a_row = QHBoxLayout()
+        self.auto_reports_label = QLabel("No directory selected")
+        self.auto_reports_label.setStyleSheet("padding: 5px; border: 1px solid #ccc; background: white;")
+        browse_a_btn = QPushButton("Select Automated Folder")
+        browse_a_btn.clicked.connect(self.browse_auto_reports)
+        a_row.addWidget(QLabel("Auto:  "), 0)
+        a_row.addWidget(self.auto_reports_label, 1)
+        a_row.addWidget(browse_a_btn, 0)
+        dir_layout.addLayout(a_row)
+        
+        main_layout.addWidget(self.dir_selection_group)
+        
+        # 1b. File Selection (File Mode)
+        self.file_selection_group = QGroupBox("1. Select Specific Files")
+        file_layout = QVBoxLayout()
+        self.file_selection_group.setLayout(file_layout)
+        self.file_selection_group.setVisible(False)
+        
+        fm_row = QHBoxLayout()
+        self.manual_file_label = QLabel("No file selected")
+        self.manual_file_label.setStyleSheet("padding: 5px; border: 1px solid #ccc; background: white;")
+        browse_fm_btn = QPushButton("Select Manual File")
+        browse_fm_btn.clicked.connect(self.browse_manual_file)
+        fm_row.addWidget(QLabel("Manual PDF:"), 0)
+        fm_row.addWidget(self.manual_file_label, 1)
+        fm_row.addWidget(browse_fm_btn, 0)
+        file_layout.addLayout(fm_row)
+        
+        fa_row = QHBoxLayout()
+        self.auto_file_label = QLabel("No file selected")
+        self.auto_file_label.setStyleSheet("padding: 5px; border: 1px solid #ccc; background: white;")
+        browse_fa_btn = QPushButton("Select Automated File")
+        browse_fa_btn.clicked.connect(self.browse_auto_file)
+        fa_row.addWidget(QLabel("Auto PDF:  "), 0)
+        fa_row.addWidget(self.auto_file_label, 1)
+        fa_row.addWidget(browse_fa_btn, 0)
+        file_layout.addLayout(fa_row)
+        
+        name_check_row = QHBoxLayout()
+        self.check_names_btn = QPushButton("🔍 Validate Patient Names Match")
+        self.check_names_btn.setStyleSheet("background-color: #64748b; color: white; padding: 5px;")
+        self.check_names_btn.clicked.connect(self.validate_comparison_names)
+        name_check_row.addWidget(self.check_names_btn)
+        self.name_match_status_label = QLabel("")
+        name_check_row.addWidget(self.name_match_status_label, 1)
+        file_layout.addLayout(name_check_row)
+        
+        main_layout.addWidget(self.file_selection_group)
+        
+        # Actions Row
+        action_layout = QHBoxLayout()
+        self.run_comparison_btn = QPushButton("🚀 Run Comparison")
+        self.run_comparison_btn.setStyleSheet("background-color: #2563eb; color: white; font-weight: bold; padding: 10px;")
+        self.run_comparison_btn.clicked.connect(self.run_comparison)
+        action_layout.addWidget(self.run_comparison_btn)
+        
+        self.open_html_report_btn = QPushButton("📊 View HTML Dashboard")
+        self.open_html_report_btn.setStyleSheet("background-color: #10b981; color: white; padding: 10px;")
+        self.open_html_report_btn.clicked.connect(self.open_comparison_html)
+        self.open_html_report_btn.setEnabled(False)
+        action_layout.addWidget(self.open_html_report_btn)
+        
+        action_layout.addStretch()
+        main_layout.addLayout(action_layout)
+        
+        # Results Display
+        results_group = QGroupBox("2. Comparison Results")
+        results_layout = QVBoxLayout()
+        results_group.setLayout(results_layout)
+        
+        self.results_scroll = QScrollArea()
+        self.results_scroll.setWidgetResizable(True)
+        self.results_scroll.setStyleSheet("background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px;")
+        
+        self.results_container = QWidget()
+        self.results_container_layout = QVBoxLayout()
+        self.results_container_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.results_container.setLayout(self.results_container_layout)
+        
+        self.results_scroll.setWidget(self.results_container)
+        results_layout.addWidget(self.results_scroll)
+        
+        # Placeholder for when no results are present
+        self.results_placeholder = QLabel("Results will appear here after running comparison...")
+        self.results_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.results_placeholder.setStyleSheet("color: #64748b; font-style: italic; padding: 40px;")
+        self.results_container_layout.addWidget(self.results_placeholder)
+        
+        main_layout.addWidget(results_group)
+        
+        # Set default paths if they exist
+        def_manual = "/data/Sethu/PGTA-Report/Comparison/Manual"
+        def_auto = "/data/Sethu/PGTA-Report/Comparison/Automated"
+        if os.path.exists(def_manual): self.manual_reports_label.setText(def_manual)
+        if os.path.exists(def_auto): self.auto_reports_label.setText(def_auto)
+        
+        return tab
     
     def create_user_guide_tab(self):
         """Create a helpful, premium user guide tab"""
@@ -1261,7 +1398,17 @@ class PGTAReportGeneratorApp(QMainWindow):
                 </div>
 
                 <div class="card">
-                    <h3>3. Productivity Features</h3>
+                    <h3>3. Report Comparison & Validation</h3>
+                    <ul class="feature-list">
+                        <li><span class="icon">🔍</span> <b>Name Validation:</b> Select individual files and use the 'Validate Patient Names Match' button to prevent errors.</li>
+                        <li><span class="icon">📁</span> <b>Directory Mode:</b> Bulk-compare two folders of reports to automatically find and analyze all matching pairs.</li>
+                        <li><span class="icon">🎴</span> <b>Visual Cards:</b> View structured results in the GUI with color-coded status badges and detailed discrepancy lists.</li>
+                        <li><span class="icon">📊</span> <b>Dashboard:</b> Click 'View HTML Dashboard' for a premium performance summary with concordance statistics.</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3>4. Productivity Features</h3>
                     <ul class="feature-list">
                         <li><span class="icon">⚡</span> <b>Copy Logic:</b> Use 'Copy Last Sample' to duplicate data across multiple entries instantly.</li>
                         <li><span class="icon">💾</span> <b>Drafts:</b> Save your current work as a JSON draft to reload and finish later.</li>
@@ -1271,7 +1418,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                 </div>
 
                 <div class="card">
-                    <h3>4. Color Coding System</h3>
+                    <h3>5. Color Coding System</h3>
                     <ul class="feature-list">
                         <li><span class="icon" style="background:#FF0000;color:white;">R</span> <b>Red:</b> Non-mosaic abnormalities - del/dup without %, CNV status L/G/SL/SG</li>
                         <li><span class="icon" style="background:#0000FF;color:white;">B</span> <b>Blue:</b> Mosaic abnormalities - any result containing % (e.g., +15(~30%), dup with ~32%)</li>
@@ -1280,7 +1427,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                 </div>
 
                 <div class="card">
-                    <h3>5. Excel File Format</h3>
+                    <h3>6. Excel File Format</h3>
                     <ul class="feature-list">
                         <li><span class="icon">📊</span> <b>Required Sheets:</b> 'Details' (patient info) and 'summary' (embryo results)</li>
                         <li><span class="icon">📝</span> <b>Details Columns:</b> Patient Name, Sample ID, Center name, Date of Biopsy, Date Sample Received, EMBRYOLOGIST NAME</li>
@@ -1290,7 +1437,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                 </div>
 
                 <div class="card">
-                    <h3>6. System Requirements</h3>
+                    <h3>7. System Requirements</h3>
                     <ul class="feature-list">
                         <li><span class="icon">🐍</span> <b>Python:</b> Version 3.8 or higher</li>
                         <li><span class="icon">📦</span> <b>Required Packages:</b> PyQt6, ReportLab, python-docx, pandas, openpyxl, Pillow</li>
@@ -1301,7 +1448,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                 </div>
 
                 <div class="card">
-                    <h3>7. Quick Start</h3>
+                    <h3>8. Quick Start</h3>
                     <ul class="feature-list">
                         <li><span class="icon">1</span> Install requirements: <code>pip install -r requirements.txt</code></li>
                         <li><span class="icon">2</span> Run application: <code>python pgta_report_generator.py</code></li>
@@ -6200,6 +6347,227 @@ Use null for fields not found. Return ONLY valid JSON."""
         if dir_path:
             self.output_dir_label.setText(dir_path)
             self.settings.setValue('last_output_dir', dir_path)
+    
+    def browse_manual_reports(self):
+        """Browse for manual reports directory"""
+        path = QFileDialog.getExistingDirectory(self, "Select Manual Reports Folder")
+        if path: self.manual_reports_label.setText(path)
+        
+    def browse_auto_reports(self):
+        """Browse for automated reports directory"""
+        path = QFileDialog.getExistingDirectory(self, "Select Automated Reports Folder")
+        if path: self.auto_reports_label.setText(path)
+
+    def browse_manual_file(self):
+        """Browse for a single manual report file"""
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Manual Report PDF", "", "PDF Files (*.pdf)")
+        if file_path:
+            self.manual_file_label.setText(file_path)
+            self.name_match_status_label.setText("") # Reset status
+            
+    def browse_auto_file(self):
+        """Browse for a single automated report file"""
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Automated Report PDF", "", "PDF Files (*.pdf)")
+        if file_path:
+            self.auto_file_label.setText(file_path)
+            self.name_match_status_label.setText("") # Reset status
+
+    def toggle_comparison_mode(self):
+        """Toggle between directory and individual file mode"""
+        is_dir_mode = self.dir_mode_radio.isChecked()
+        self.dir_selection_group.setVisible(is_dir_mode)
+        self.file_selection_group.setVisible(not is_dir_mode)
+        
+        # Clear results
+        self.results_placeholder.setVisible(True)
+        # Remove all widgets from container
+        while self.results_container_layout.count() > 1: # Keep placeholder
+            item = self.results_container_layout.takeAt(1)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        self.open_html_report_btn.setEnabled(False)
+
+    def validate_comparison_names(self):
+        """Perform a quick check to see if names match between selected files"""
+        m_file = self.manual_file_label.text()
+        a_file = self.auto_file_label.text()
+        
+        if "No file selected" in [m_file, a_file]:
+            QMessageBox.warning(self, "Warning", "Please select both manual and automated files first.")
+            return
+            
+        self.statusBar().showMessage("Validating names...")
+        try:
+            comparator = PGTAReportComparator()
+            result = comparator.check_name_match(m_file, a_file)
+            
+            if result.get('match'):
+                self.name_match_status_label.setText(f"✅ Match Found: {result['manual_name']}")
+                self.name_match_status_label.setStyleSheet("color: green; font-weight: bold;")
+            else:
+                msg = f"❌ Name Mismatch! M: {result.get('manual_name', 'Unknown')} vs A: {result.get('auto_name', 'Unknown')}"
+                if result.get('is_swapped'):
+                    msg += " (Files appear to be SWAPPED!)"
+                self.name_match_status_label.setText(msg)
+                self.name_match_status_label.setStyleSheet("color: red; font-weight: bold;")
+                
+            if 'error' in result:
+                QMessageBox.warning(self, "Extraction Note", f"Validation completed with a note: {result['error']}")
+        except Exception as e:
+            QMessageBox.critical(self, "Validation Error", f"Failed to validate names: {str(e)}")
+        finally:
+            self.statusBar().showMessage("Validation complete")
+
+    def run_comparison(self):
+        """Run report comparison logic based on selected mode"""
+        if self.dir_mode_radio.isChecked():
+            manual_src = self.manual_reports_label.text()
+            auto_src = self.auto_reports_label.text()
+            is_file = False
+        else:
+            manual_src = self.manual_file_label.text()
+            auto_src = self.auto_file_label.text()
+            is_file = True
+        
+        if "No directory selected" in manual_src or "No file selected" in manual_src or \
+           "No directory selected" in auto_src or "No file selected" in auto_src:
+            QMessageBox.warning(self, "Warning", "Please select both input sources.")
+            return
+            
+        self.run_comparison_btn.setEnabled(False)
+        self.statusBar().showMessage("Running comparison...")
+        QApplication.processEvents()
+        
+        try:
+            results = []
+            comparator = PGTAReportComparator(
+                manual_dir=manual_src if not is_file else None,
+                automated_dir=auto_src if not is_file else None
+            )
+            
+            if is_file:
+                # Perform a single pair comparison
+                results.append(comparator.compare_single_pair(manual_src, auto_src))
+            else:
+                results = comparator.compare()
+            
+            if not results:
+                QMessageBox.information(self, "No Results", "No matching report pairs found in the selected directories.")
+                return
+
+            # Generate reports
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            html_path = os.path.join(os.getcwd(), f"comparison_report_{timestamp}.html")
+            md_path = os.path.join(os.getcwd(), f"comparison_log_{timestamp}.md")
+            
+            comparator.generate_html_report(results, html_path)
+            md_content = comparator.generate_report(results)
+            with open(md_path, "w", encoding='utf-8') as f: 
+                f.write(md_content)
+            
+            # Update UI
+            self.results_placeholder.setVisible(False)
+            # Remove existing results
+            while self.results_container_layout.count() > 1:
+                item = self.results_container_layout.takeAt(1)
+                if item.widget(): item.widget().deleteLater()
+                
+            for res in results:
+                self.add_result_card(res)
+                
+            self.open_html_report_btn.setEnabled(True)
+            self.last_comparison_html = html_path
+            
+            matched_count = len([r for r in results if not r['discrepancies']])
+            QMessageBox.information(self, "Success", f"Comparison complete!\nMatched: {matched_count}/{len(results)}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Comparison failed: {str(e)}")
+        finally:
+            self.run_comparison_btn.setEnabled(True)
+            self.statusBar().showMessage("Comparison complete")
+            
+    def open_comparison_html(self):
+        """Open the generated HTML dashboard"""
+        if hasattr(self, 'last_comparison_html') and os.path.exists(self.last_comparison_html):
+            url = f"file:///{self.last_comparison_html.replace(os.sep, '/')}"
+            if platform.system() == 'Windows':
+                os.startfile(self.last_comparison_html)
+            elif platform.system() == 'Darwin':
+                subprocess.Popen(['open', self.last_comparison_html])
+            else:
+                subprocess.Popen(['xdg-open', self.last_comparison_html])
+    
+    def add_result_card(self, res):
+        """Add a structured result card to the scroll area"""
+        card = QFrame()
+        card.setFrameShape(QFrame.Shape.StyledPanel)
+        card.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                padding: 15px;
+                margin-bottom: 2px;
+            }
+            QFrame:hover {
+                border: 1px solid #cbd5e1;
+                background-color: #f8fafc;
+            }
+        """)
+        card_layout = QVBoxLayout(card)
+        
+        # Header Row
+        header = QHBoxLayout()
+        name_label = QLabel(res['patient'])
+        name_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #1e293b;")
+        header.addWidget(name_label)
+        
+        status_badge = QLabel()
+        is_perfect = not res['discrepancies']
+        if is_perfect:
+            status_badge.setText("MATCHED")
+            status_badge.setStyleSheet("background-color: #dcfce7; color: #166534; font-weight: bold; padding: 4px 10px; border-radius: 12px; font-size: 10px;")
+        else:
+            status_badge.setText("DISCREPANCY")
+            status_badge.setStyleSheet("background-color: #fee2e2; color: #991b1b; font-weight: bold; padding: 4px 10px; border-radius: 12px; font-size: 10px;")
+        header.addWidget(status_badge)
+        header.addStretch()
+        card_layout.addLayout(header)
+        
+        # Files Row
+        files_label = QLabel(f"📄 {res['manual_file']}  →  {res['auto_file']}")
+        files_label.setStyleSheet("color: #64748b; font-size: 12px; margin-top: 5px;")
+        card_layout.addWidget(files_label)
+        
+        # Discrepancies
+        if not is_perfect:
+            dis_container = QVBoxLayout()
+            dis_container.setSpacing(4)
+            dis_container.setContentsMargins(10, 8, 0, 0)
+            for d in res['discrepancies']:
+                item_widget = QWidget()
+                item_layout = QHBoxLayout(item_widget)
+                item_layout.setContentsMargins(0, 0, 0, 0)
+                item_layout.setSpacing(8)
+                
+                bullet = QLabel("•")
+                bullet.setFixedWidth(10)
+                bullet.setStyleSheet("color: #ef4444; font-weight: bold; font-size: 16px;")
+                item_layout.addWidget(bullet)
+                
+                text = QLabel(d)
+                text.setStyleSheet("color: #b91c1c; font-size: 13px;")
+                text.setWordWrap(True)
+                item_layout.addWidget(text)
+                dis_container.addWidget(item_widget)
+            card_layout.addLayout(dis_container)
+        else:
+            success_msg = QLabel("✅ All data fields are perfectly consistent.")
+            success_msg.setStyleSheet("color: #10b981; font-size: 13px; margin-top: 8px; font-weight: 500;")
+            card_layout.addWidget(success_msg)
+            
+        self.results_container_layout.addWidget(card)
     
     
     def update_progress(self, value, message):

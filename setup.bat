@@ -91,26 +91,13 @@ if errorlevel 1 (
 echo [OK] Core packages installed
 echo.
 
-REM Try to install EasyOCR (optional, may fail on some systems)
-echo [*] Installing EasyOCR (optional, for TRF verification)...
-echo     This may take a few minutes...
-echo.
-python -m pip install easyocr
 
-if errorlevel 1 (
-    echo.
-    echo [!] EasyOCR installation had issues.
-    echo     TRF verification will be disabled, but the app will work.
-    echo.
-    echo     To enable TRF verification later:
-    echo       1. Install Visual C++ Redistributable:
-    echo          https://aka.ms/vs/17/release/vc_redist.x64.exe
-    echo       2. Delete .venv folder
-    echo       3. Run setup.bat again
-    echo.
-) else (
-    echo [OK] EasyOCR installed
-)
+REM EasyOCR installation REMOVED 2026-02-16
+REM Reason: Causes Windows crashes due to PyTorch/Visual C++ dependencies
+REM See: dev_tools/trf_verification_backup/ for restoration
+echo [*] Skipping EasyOCR (TRF verification removed)
+echo.
+
 
 echo.
 echo ===========================================
