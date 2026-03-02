@@ -539,7 +539,7 @@ class PGTAReportTemplate:
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('ALIGN', (0, 0), (0, -1), 'LEFT'), # Standard LEFT alignment
             ('ALIGN', (3, 0), (3, -1), 'LEFT'), # Standard LEFT alignment
-            ('LEFTPADDING', (0, 0), (0, -1), 7), # 7pt left padding for first column
+            ('LEFTPADDING', (0, 0), (0, -1), 8), # 8pt left padding for first column
             ('LEFTPADDING', (1, 0), (-1, -1), 0),
             ('RIGHTPADDING', (0, 0), (-1, -1), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
@@ -686,7 +686,7 @@ class PGTAReportTemplate:
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('ALIGN', (0, 0), (0, -1), 'LEFT'), # Standard LEFT alignment
             ('ALIGN', (3, 0), (3, -1), 'LEFT'), # Standard LEFT alignment
-            ('LEFTPADDING', (0, 0), (0, -1), 7), # 7pt left padding for consistency
+            ('LEFTPADDING', (0, 0), (0, -1), 8), # 8pt left padding for consistency
             ('LEFTPADDING', (1, 0), (-1, -1), 0),
             ('RIGHTPADDING', (0, 0), (-1, -1), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
