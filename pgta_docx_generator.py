@@ -18,7 +18,7 @@ class PGTADocxGenerator:
     """Generates DOCX reports for PGT-A with pixel-level precision"""
     
     # Static content (same as PDF template)
-    METHODOLOGY_TEXT = """Chromosomal aneuploidy analysis was performed using ChromInst® PGT-A from Yikon Genomics (Suzhou) Co., Ltd - China. The Yikon - ChromInst® PGT-A kit with the Genemind - SURFSeq 5000* High-throughput Sequencing Platform allows detection of aneuploidies in all 23 sets of Chromosomes. Probes are not covering the p arm of acrocentric chromosomes as they are rich in repeat regions and RNA markers and devoid of genes. Changes in this region will not be detected. However, these regions have less clinical significance due to the absence of genes. Chromosomal aneuploidy can be detected by copy number variations (CNVs), which represent a class of variation in which segments of the genome have been duplicated (gains) or deleted (losses). Large, genomic copy number imbalances can range from sub-chromosomal regions to entire chromosomes. Inherited and de-novo CNVs (up to 10 Mb) have been associated with many disease conditions. This assay was performed on DNA extracted from embryo biopsy samples."""
+    METHODOLOGY_TEXT = """Chromosomal aneuploidy analysis was performed using ChromInst® PGT-A kit from Yikon Genomics (Suzhou) Co., Ltd - China. The Yikon - ChromInst® PGT-A kit with the Genemind - SURFSeq 5000* High-throughput Sequencing Platform allows detection of aneuploidies in all 23 sets of Chromosomes. Probes are not covering the p arm of acrocentric chromosomes as they are rich in repeat regions and RNA markers and devoid of genes. Changes in this region will not be detected. However, these regions have less clinical significance due to the absence of genes. Chromosomal aneuploidy can be detected by copy number variations (CNVs), which represent a class of variation in which segments of the genome have been duplicated (gains) or deleted (losses). Large, genomic copy number imbalances can range from sub-chromosomal regions to entire chromosomes. Inherited and de-novo CNVs (up to 10 Mb) have been associated with many disease conditions. This assay was performed on DNA extracted from embryo biopsy samples."""
     
     MOSAICISM_TEXT = """Mosaicism arises in the embryo due to mitotic errors which lead to the production of karyotypically distinct cell lineages within a single embryo [1]. NGS has the sensitivity to detect mosaicism when 30% or the above cells are abnormal [2]. Mosaicism is reported in our laboratory as follows [3]."""
     
@@ -211,11 +211,11 @@ class PGTADocxGenerator:
         
         doc.add_paragraph() # Spacer
         
-        # Patient Info Table [85, 12, 166, 65, 12, 150] - 6 rows (spouse name combined with patient name)
-        # Adjusted widths to give more space to patient name field
+        # Patient Info Table [108, 12, 131, 108, 12, 119] - 6 rows (spouse name combined with patient name)
+        # Adjusted widths to give more space to label columns to prevent date wrap
         info_table = doc.add_table(rows=6, cols=6)
         self._set_table_fixed_layout(info_table)
-        self._set_column_widths(info_table, [85, 12, 166, 65, 12, 150])
+        self._set_column_widths(info_table, [108, 12, 131, 108, 12, 119])
         self._populate_patient_table(info_table, patient_data)
         
         doc.add_paragraph() # Spacer
@@ -292,8 +292,9 @@ class PGTADocxGenerator:
     def _populate_patient_table(self, table, data):
         """Standard Patient Info Population Logic"""
         # Patient name and spouse name - spouse on new line
-        patient_name = self._clean(data.get('patient_name'))
-        spouse_name = self._clean(data.get('spouse_name'))
+        import re
+        patient_name = re.sub(r'\s+', ' ', self._clean(data.get('patient_name'))).strip()
+        spouse_name = re.sub(r'\s+', ' ', self._clean(data.get('spouse_name'))).strip()
         # Put spouse on new line if present
         combined_name = f"{patient_name}\n{spouse_name}" if spouse_name else patient_name
         
@@ -329,7 +330,7 @@ class PGTADocxGenerator:
                 p_fmt.space_before = Pt(2)
                 p_fmt.space_after = Pt(2)
                 
-                # Set cell alignment to match PDF
+                # Set cell alignment to match PDF strictly left aligned for values
                 cell_idx = row.cells.index(cell)
                 if cell_idx in [0, 3]:  # Label columns
                     cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
@@ -386,7 +387,7 @@ class PGTADocxGenerator:
         # 1. Banner [Total: 490pt] - Match exact cover page positioning
         banner = doc.add_table(rows=2, cols=6)
         self._set_table_fixed_layout(banner)
-        self._set_column_widths(banner, [85, 12, 166, 65, 12, 150])
+        self._set_column_widths(banner, [108, 12, 131, 108, 12, 119])
         # Ensure table is aligned to the left like cover page
         banner.alignment = WD_ALIGN_PARAGRAPH.LEFT
         self._populate_patient_table(banner, patient_data)
@@ -455,12 +456,22 @@ class PGTADocxGenerator:
         if not is_inconclusive:
             chr_statuses = embryo_data.get('chromosome_statuses', {})
             mosaic_map = embryo_data.get('mosaic_percentages', {})
+            
+            autosomes = str(embryo_data.get('autosomes', '')).upper()
+            sex_chrs = str(embryo_data.get('sex_chromosomes', '')).upper()
+            
             # Check for actual mosaic percentage values (not empty, not dash, must be numeric)
             has_mosaic = any(
                 v and str(v).strip() and str(v).strip() != '-' and str(v).strip().replace('.', '').isdigit()
                 for v in mosaic_map.values()
             )
             
+            is_autosomes_normal = 'NORMAL' in autosomes or 'EUPLOID' in autosomes or not autosomes.strip()
+            is_sex_mosaic = 'MOSAIC' in sex_chrs
+            
+            if is_autosomes_normal and is_sex_mosaic:
+                has_mosaic = False
+                
             num_rows = 3 if has_mosaic else 2
             cnv_table = doc.add_table(rows=num_rows, cols=23)
             self._set_table_fixed_layout(cnv_table)
@@ -561,8 +572,21 @@ class PGTADocxGenerator:
         # Check for simple abbreviations at word boundaries
         words = s.split()
         for word in words:
-            if word in ['L', 'G', 'SL', 'SG']:
-                return "#FF0000"
-            if word in ['MG', 'ML', 'SMG', 'SML', 'M']:
-                return "#0000FF"
+            if word in ['MULTIPLE', 'CHROMOSOMAL', 'ABNORMALITIES']: # Handled elsewhere usually but catching edge cases
+                if "MULTIPLE CHROMOSOMAL ABNORMALITIES" in s:
+                    return "#FF0000"
+            for abbrev in ['L', 'G', 'SL', 'SG', 'SL/SG', 'SG/SL']:
+                # Need to be careful with exact matches or substrings like SL/SG
+                if abbrev in s.split() or abbrev in s.split(','):
+                    return "#FF0000"
+            for abbrev in ['MG', 'ML', 'SMG', 'SML', 'M', 'SML/SMG', 'SMG/SML']:
+                if abbrev in s.split() or abbrev in s.split(','):
+                    return "#0000FF"
+                    
+        # Explicit checks for the new combinations
+        if "SL/SG" in s or "SG/SL" in s or "MULTIPLE CHROMOSOMAL ABNORMALITIES" in s:
+            return "#FF0000"
+        if "SML/SMG" in s or "SMG/SML" in s:
+            return "#0000FF"
+            
         return "#000000"

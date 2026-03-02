@@ -52,7 +52,7 @@ class PGTAReportTemplate:
     FOOTER_LOGO = os.path.join(ASSETS_DIR, "image_page1_2.png")
     
     # Static content
-    METHODOLOGY_TEXT = """Chromosomal aneuploidy analysis was performed using ChromInst® PGT-A from Yikon Genomics (Suzhou) Co., Ltd - China. The Yikon - ChromInst® PGT-A kit with the Genemind - SURFSeq 5000* High-throughput Sequencing Platform allows detection of aneuploidies in all 23 sets of Chromosomes. Probes are not covering the p arm of acrocentric chromosomes as they are rich in repeat regions and RNA markers and devoid of genes. Changes in this region will not be detected. However, these regions have less clinical significance due to the absence of genes. Chromosomal aneuploidy can be detected by copy number variations (CNVs), which represent a class of variation in which segments of the genome have been duplicated (gains) or deleted (losses). Large, genomic copy number imbalances can range from sub-chromosomal regions to entire chromosomes. Inherited and de-novo CNVs (up to 10 Mb) have been associated with many disease conditions. This assay was performed on DNA extracted from embryo biopsy samples."""
+    METHODOLOGY_TEXT = """Chromosomal aneuploidy analysis was performed using ChromInst® PGT-A kit from Yikon Genomics (Suzhou) Co., Ltd - China. The Yikon - ChromInst® PGT-A kit with the Genemind - SURFSeq 5000* High-throughput Sequencing Platform allows detection of aneuploidies in all 23 sets of Chromosomes. Probes are not covering the p arm of acrocentric chromosomes as they are rich in repeat regions and RNA markers and devoid of genes. Changes in this region will not be detected. However, these regions have less clinical significance due to the absence of genes. Chromosomal aneuploidy can be detected by copy number variations (CNVs), which represent a class of variation in which segments of the genome have been duplicated (gains) or deleted (losses). Large, genomic copy number imbalances can range from sub-chromosomal regions to entire chromosomes. Inherited and de-novo CNVs (up to 10 Mb) have been associated with many disease conditions. This assay was performed on DNA extracted from embryo biopsy samples."""
     
     MOSAICISM_TEXT = """Mosaicism arises in the embryo due to mitotic errors which lead to the production of karyotypically distinct cell lineages within a single embryo [1]. NGS has the sensitivity to detect mosaicism when 30% or the above cells are abnormal [2]. Mosaicism is reported in our laboratory as follows [3]."""
     
@@ -514,8 +514,9 @@ class PGTAReportTemplate:
         # Standard widths for cover page: [85, 12, 146, 85, 12, 150] Total: 490pt
         
         # Patient name and spouse name - spouse on new line
-        patient_name = self._clean(patient_data.get('patient_name'))
-        spouse_name = self._clean(patient_data.get('spouse_name'))
+        import re
+        patient_name = re.sub(r'\s+', ' ', self._clean(patient_data.get('patient_name'))).strip()
+        spouse_name = re.sub(r'\s+', ' ', self._clean(patient_data.get('spouse_name'))).strip()
         # Put spouse on new line with <br/> if present
         combined_name = f"{patient_name}<br/>{spouse_name}" if spouse_name else patient_name
         
@@ -528,8 +529,8 @@ class PGTAReportTemplate:
             [self._wrap_text('<b>Biopsy performed by</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_performed_by'))}</b>", max_width=140), self._wrap_text('<b>Report date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('report_date'))}</b>", max_width=144)]
         ]
         
-        # Create table with standard widths [Total: 490pt]
-        table = Table(data, colWidths=[85, 12, 146, 85, 12, 150], hAlign='LEFT')
+        # Create table with optimal widths to prevent 'Sample collection date' wrap [Total: 490pt]
+        table = Table(data, colWidths=[108, 12, 131, 108, 12, 119], hAlign='LEFT')
         
         # Style table
         table.setStyle(TableStyle([
@@ -845,12 +846,22 @@ class PGTAReportTemplate:
         chr_statuses = embryo_data.get('chromosome_statuses', {})
         mosaic_percentages = embryo_data.get('mosaic_percentages', {})
         
+        autosomes = str(embryo_data.get('autosomes', '')).upper()
+        sex_chrs = str(embryo_data.get('sex_chromosomes', '')).upper()
+        
         # Check for actual mosaic percentage values (not empty, not dash, must be numeric)
         has_mosaic = any(
             v and str(v).strip() and str(v).strip() != '-' and str(v).strip().replace('.', '').isdigit()
             for v in mosaic_percentages.values()
         )
         
+        # Rule: If Autosomes is Normal/Euploid & Sex chromosome is Mosaic gain/loss -> omit Mosaic(%) row
+        is_autosomes_normal = 'NORMAL' in autosomes or 'EUPLOID' in autosomes or not autosomes.strip()
+        is_sex_mosaic = 'MOSAIC' in sex_chrs
+        
+        if is_autosomes_normal and is_sex_mosaic:
+            has_mosaic = False
+            
         if has_mosaic:
             # Header set to 9pt
             header = [self._wrap_text('Chromosome', bold=True, align='CENTER', font_size=9)] + [self._wrap_text(str(i), bold=True, align='CENTER', font_size=9) for i in range(1, 23)]
