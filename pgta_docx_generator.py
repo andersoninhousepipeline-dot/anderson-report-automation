@@ -335,6 +335,8 @@ class PGTADocxGenerator:
                 if cell_idx in [0, 3]:  # Label columns
                     cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
                     cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    # Added left indentation to mimic PDF padding
+                    cell.paragraphs[0].paragraph_format.left_indent = Pt(7)
                 elif cell_idx in [1, 4]:  # Colon columns
                     cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
                     cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
