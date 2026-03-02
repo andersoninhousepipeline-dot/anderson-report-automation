@@ -216,7 +216,7 @@ class PGTADocxGenerator:
         info_table = doc.add_table(rows=6, cols=6)
         self._set_table_fixed_layout(info_table)
         self._set_column_widths(info_table, [108, 12, 131, 108, 12, 119])
-        self._populate_patient_table(info_table, patient_data)
+        self._populate_patient_table(info_table, patient_data, is_embryo=False)
         
         doc.add_paragraph() # Spacer
         
@@ -289,7 +289,7 @@ class PGTADocxGenerator:
             p_comment = doc.add_paragraph(results_summary_comment)
             self._set_paragraph_font(p_comment, font_size=9)
 
-    def _populate_patient_table(self, table, data):
+    def _populate_patient_table(self, table, data, is_embryo=False):
         """Standard Patient Info Population Logic"""
         # Patient name and spouse name - spouse on new line
         import re
@@ -334,9 +334,17 @@ class PGTADocxGenerator:
                 cell_idx = row.cells.index(cell)
                 if cell_idx in [0, 3]:  # Label columns
                     cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
-                    cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    # Added left indentation to mimic PDF padding
-                    cell.paragraphs[0].paragraph_format.left_indent = Pt(12)
+                    
+                    # Logic: PIN label in embryo banner should be right-aligned (flushed to colon)
+                    # Page 1 and other labels should remain left-aligned with 12pt padding
+                    label_text = cell.text.strip()
+                    if is_embryo and label_text == "PIN":
+                        cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                        cell.paragraphs[0].paragraph_format.left_indent = Pt(0)
+                        cell.paragraphs[0].paragraph_format.right_indent = Pt(12)
+                    else:
+                        cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
+                        cell.paragraphs[0].paragraph_format.left_indent = Pt(4)
                 elif cell_idx in [1, 4]:  # Colon columns
                     cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
                     cell.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -392,7 +400,7 @@ class PGTADocxGenerator:
         self._set_column_widths(banner, [108, 12, 131, 108, 12, 119])
         # Ensure table is aligned to the left like cover page
         banner.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        self._populate_patient_table(banner, patient_data)
+        self._populate_patient_table(banner, patient_data, is_embryo=True)
 
         doc.add_paragraph()
         

@@ -286,6 +286,17 @@ class PGTAReportTemplate:
             parent=self.styles['Normal'],
             fontSize=10, 
             leading=12,
+            alignment=TA_LEFT,
+            wordWrap='CJK',
+            fontName=self._get_font('SegoeUI-Bold', 'Helvetica-Bold')
+        ))
+
+        # Label text style (Force RIGHT alignment)
+        self.styles.add(ParagraphStyle(
+            name='PGTALabelTextRight',
+            parent=self.styles['Normal'],
+            fontSize=10, 
+            leading=12,
             alignment=TA_RIGHT,
             wordWrap='CJK',
             fontName=self._get_font('SegoeUI-Bold', 'Helvetica-Bold')
@@ -511,7 +522,7 @@ class PGTAReportTemplate:
     def _create_patient_info_table(self, patient_data):
         """Create patient information table"""
         # Prepare data with Paragraph wrapping to prevent overlap
-        # Standard widths for cover page: [85, 12, 146, 85, 12, 150] Total: 490pt
+        # Standard widths for cover page: [108, 12, 131, 108, 12, 119] Total: 490pt
         
         # Patient name and spouse name - spouse on new line
         import re
@@ -539,8 +550,10 @@ class PGTAReportTemplate:
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('ALIGN', (0, 0), (0, -1), 'LEFT'), # Standard LEFT alignment
             ('ALIGN', (3, 0), (3, -1), 'LEFT'), # Standard LEFT alignment
-            ('LEFTPADDING', (0, 0), (0, -1), 12), # 12pt left padding for first column
-            ('LEFTPADDING', (1, 0), (-1, -1), 0),
+            ('LEFTPADDING', (0, 0), (0, -1), 4),
+            ('LEFTPADDING', (3, 0), (3, -1), 4),
+            ('LEFTPADDING', (1, 0), (2, -1), 0),
+            ('LEFTPADDING', (4, 0), (-1, -1), 0),
             ('RIGHTPADDING', (0, 0), (-1, -1), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
@@ -672,7 +685,7 @@ class PGTAReportTemplate:
             self._wrap_label('Patient name'),
             _wrap_banner(':'),
             _wrap_banner(f"<b>{combined_name}</b>"),
-            self._wrap_label('PIN'),
+            Paragraph(f"<nobr>PIN</nobr>", self.styles['PGTALabelTextRight']),
             _wrap_banner(':'),
             _wrap_banner(f"<b>{self._clean(patient_data.get('pin'))}</b>")
         ]]
@@ -686,9 +699,14 @@ class PGTAReportTemplate:
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('ALIGN', (0, 0), (0, -1), 'LEFT'), # Standard LEFT alignment
             ('ALIGN', (3, 0), (3, -1), 'LEFT'), # Standard LEFT alignment
-            ('LEFTPADDING', (0, 0), (0, -1), 12), # 12pt left padding for consistency
-            ('LEFTPADDING', (1, 0), (-1, -1), 0),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+            ('LEFTPADDING', (0, 0), (0, -1), 4),
+            ('LEFTPADDING', (3, 0), (3, -1), 0),
+            ('LEFTPADDING', (1, 0), (2, -1), 0),
+            ('LEFTPADDING', (4, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (3, 0), (3, -1), 12),
+            ('RIGHTPADDING', (0, 0), (0, -1), 0),
+            ('RIGHTPADDING', (1, 0), (2, -1), 0),
+            ('RIGHTPADDING', (4, 0), (-1, -1), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
         ]))
