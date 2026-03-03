@@ -9,9 +9,48 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 import os
 import sys
 from io import BytesIO
+from datetime import datetime
+
+def set_cell_border(cell, **kwargs):
+    """
+    Set cell's border
+    Usage:
+    set_cell_border(
+        cell,
+        top={"sz": 12, "val": "single", "color": "#FF0000", "space": "0"},
+        bottom={"sz": 12, "color": "#00FF00", "val": "single"},
+        start={"sz": 24, "val": "dashed", "shadow": "true"},
+        end={"sz": 12, "val": "single", "color": "#0000FF"},
+    )
+    """
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+
+    # check for tag existence, if none found, then create one
+    tcBorders = tcPr.find(qn('w:tcBorders'))
+    if tcBorders is None:
+        tcBorders = OxmlElement('w:tcBorders')
+        tcPr.append(tcBorders)
+
+    for edge in ('start', 'top', 'end', 'bottom', 'left', 'right'):
+        edge_data = kwargs.get(edge)
+        if edge_data:
+            tag = 'w:{}'.format(edge)
+
+            # check for tag existence, if none found, then create one
+            element = tcBorders.find(qn(tag))
+            if element is None:
+                element = OxmlElement(tag)
+                tcBorders.append(element)
+
+            # looks like order of attributes is important
+            for key in ["sz", "val", "color", "space", "shadow"]:
+                if key in edge_data:
+                    element.set(qn('w:{}'.format(key)), str(edge_data[key]))
 
 
 class PGTADocxGenerator:
@@ -125,8 +164,9 @@ class PGTADocxGenerator:
 
     # --- GENERATION LOGIC ---
 
-    def generate_docx(self, output_path, patient_data, embryos_data, show_logo=True):
+    def generate_docx(self, output_path, patient_data, embryos_data, show_logo=True, show_grid=False):
         """Main entry point for DOCX generation"""
+        self.show_grid = show_grid
         doc = Document()
         
         # 1. Page Setup (Margins mirroring PDF exactly)
@@ -214,6 +254,7 @@ class PGTADocxGenerator:
         # Patient Info Table [108, 12, 131, 108, 12, 119] - 6 rows (spouse name combined with patient name)
         # Adjusted widths to give more space to label columns to prevent date wrap
         info_table = doc.add_table(rows=6, cols=6)
+        self._apply_grid_to_table(info_table)
         self._set_table_fixed_layout(info_table)
         self._set_column_widths(info_table, [108, 12, 131, 108, 12, 119])
         self._populate_patient_table(info_table, patient_data, is_embryo=False)
@@ -244,6 +285,7 @@ class PGTADocxGenerator:
         
         # Results Summary Table [50, 95, 185, 80, 86]
         res_table = doc.add_table(rows=len(embryos_data) + 1, cols=5)
+        self._apply_grid_to_table(res_table)
         self._set_table_fixed_layout(res_table)
         self._set_column_widths(res_table, [50, 95, 185, 80, 86])
         
@@ -396,6 +438,7 @@ class PGTADocxGenerator:
         
         # 1. Banner [Total: 490pt] - Match exact cover page positioning
         banner = doc.add_table(rows=2, cols=6)
+        self._apply_grid_to_table(banner)
         self._set_table_fixed_layout(banner)
         self._set_column_widths(banner, [108, 12, 131, 108, 12, 119])
         # Ensure table is aligned to the left like cover page
@@ -428,6 +471,7 @@ class PGTADocxGenerator:
         ]
         
         d_table = doc.add_table(rows=len(details), cols=1)
+        self._apply_grid_to_table(d_table)
         self._set_table_fixed_layout(d_table)
         self._set_column_widths(d_table, [490])
         for idx, (label, val, color) in enumerate(details):
@@ -484,6 +528,7 @@ class PGTADocxGenerator:
                 
             num_rows = 3 if has_mosaic else 2
             cnv_table = doc.add_table(rows=num_rows, cols=23)
+            self._apply_grid_to_table(cnv_table)
             self._set_table_fixed_layout(cnv_table)
             self._set_column_widths(cnv_table, [75] + [19.13]*22)
             
@@ -600,3 +645,19 @@ class PGTADocxGenerator:
             return "#0000FF"
             
         return "#000000"
+
+    def _apply_grid_to_table(self, table):
+        """Apply lite white grid lines to table if enabled"""
+        if not hasattr(self, 'show_grid') or not self.show_grid:
+            return
+            
+        grid_color = "E0E0E0" # Lite white/grey
+        for row in table.rows:
+            for cell in row.cells:
+                set_cell_border(
+                    cell,
+                    top={"sz": 4, "val": "single", "color": grid_color},
+                    bottom={"sz": 4, "val": "single", "color": grid_color},
+                    start={"sz": 4, "val": "single", "color": grid_color},
+                    end={"sz": 4, "val": "single", "color": grid_color}
+                )

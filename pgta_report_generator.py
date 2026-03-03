@@ -90,18 +90,19 @@ class PreviewWorker(QThread):
     finished = pyqtSignal(str) # Path to generated PDF
     error = pyqtSignal(str)
     
-    def __init__(self, patient_data, embryos_data, output_path, show_logo=True):
+    def __init__(self, patient_data, embryos_data, output_path, show_logo=True, show_grid=False):
         super().__init__()
         self.patient_data = patient_data
         self.embryos_data = embryos_data
         self.output_path = output_path
         self.show_logo = show_logo
+        self.show_grid = show_grid
         
     def run(self):
         try:
             # Generate PDF using native template
             gen = PGTAReportTemplate(assets_dir="assets/pgta")
-            gen.generate_pdf(self.output_path, self.patient_data, self.embryos_data, show_logo=self.show_logo)
+            gen.generate_pdf(self.output_path, self.patient_data, self.embryos_data, show_logo=self.show_logo, show_grid=self.show_grid)
             self.finished.emit(self.output_path)
         except Exception as e:
             self.error.emit(str(e))
@@ -113,7 +114,7 @@ class ReportGeneratorWorker(QThread):
     finished = pyqtSignal(list, list)
     error = pyqtSignal(str)
     
-    def __init__(self, patient_data_list, output_dir, generate_pdf=True, generate_docx=True, template_type="PGT-A", show_logo=True):
+    def __init__(self, patient_data_list, output_dir, generate_pdf=True, generate_docx=True, template_type="PGT-A", show_logo=True, show_grid=False):
         super().__init__()
         self.patient_data_list = patient_data_list
         self.output_dir = output_dir
@@ -121,6 +122,7 @@ class ReportGeneratorWorker(QThread):
         self.generate_docx = generate_docx
         self.template_type = template_type
         self.show_logo = show_logo
+        self.show_grid = show_grid
     
     def run(self):
         """Generate reports"""
@@ -167,7 +169,8 @@ class ReportGeneratorWorker(QThread):
                         pdf_path,
                         patient_data['patient_info'],
                         patient_data['embryos'],
-                        show_logo=self.show_logo
+                        show_logo=self.show_logo,
+                        show_grid=self.show_grid
                     )
                 
                 # Generate DOCX
@@ -177,7 +180,8 @@ class ReportGeneratorWorker(QThread):
                         docx_path,
                         patient_data['patient_info'],
                         patient_data['embryos'],
-                        show_logo=self.show_logo
+                        show_logo=self.show_logo,
+                        show_grid=self.show_grid
                     )
                 
                 success_reports.append(base_filename)
@@ -276,7 +280,8 @@ class PGTAReportGeneratorApp(QMainWindow):
             self.generate_pdf_check.isChecked(),
             self.generate_docx_check.isChecked(),
             template_type=self.template_combo.currentText(),
-            show_logo=(self.logo_combo.currentText() == "With Logo")
+            show_logo=(self.logo_combo.currentText() == "With Logo"),
+            show_grid=(self.grid_combo.currentText() == "With Grid lines")
         )
         
         self.worker.progress.connect(self.update_progress)
@@ -578,7 +583,6 @@ class PGTAReportGeneratorApp(QMainWindow):
         action_row.addWidget(QLabel("Output Forms:"))
         action_row.addWidget(self.generate_pdf_check)
         action_row.addWidget(self.generate_docx_check)
-        
         # Logo Preference
         action_row.addSpacing(20)
         action_row.addWidget(QLabel("Branding:"))
@@ -586,6 +590,14 @@ class PGTAReportGeneratorApp(QMainWindow):
         self.logo_combo.addItems(["With Logo", "Without Logo"])
         self.logo_combo.currentIndexChanged.connect(self.update_preview)
         action_row.addWidget(self.logo_combo)
+        
+        # Grid lines Preference
+        action_row.addSpacing(20)
+        action_row.addWidget(QLabel("Grid lines:"))
+        self.grid_combo = ClickOnlyComboBox()
+        self.grid_combo.addItems(["No Grid", "With Grid lines"])
+        self.grid_combo.currentIndexChanged.connect(self.update_preview)
+        action_row.addWidget(self.grid_combo)
         
         action_row.addStretch()
         action_row.addWidget(self.generate_btn)
@@ -786,7 +798,8 @@ class PGTAReportGeneratorApp(QMainWindow):
             return # Skip if already running (debounce handles most, but safety check)
             
         show_logo = self.logo_combo.currentText() == "With Logo"
-        self.preview_worker = PreviewWorker(p_data, e_data, temp_pdf, show_logo=show_logo)
+        show_grid = self.grid_combo.currentText() == "With Grid lines"
+        self.preview_worker = PreviewWorker(p_data, e_data, temp_pdf, show_logo=show_logo, show_grid=show_grid)
         self.preview_worker.finished.connect(self.on_preview_generated)
         self.preview_worker.error.connect(lambda e: print(f"PREVIEW ERROR: {e}"))
         self.preview_worker.start()
@@ -1093,6 +1106,15 @@ class PGTAReportGeneratorApp(QMainWindow):
         self.bulk_logo_combo.currentIndexChanged.connect(self.update_batch_preview)
         logo_layout.addWidget(self.bulk_logo_combo)
         left_layout.addLayout(logo_layout)
+        
+        # Grid preference for bulk
+        grid_layout = QHBoxLayout()
+        grid_layout.addWidget(QLabel("Grid lines:"))
+        self.bulk_grid_combo = ClickOnlyComboBox()
+        self.bulk_grid_combo.addItems(["No Grid", "With Grid lines"])
+        self.bulk_grid_combo.currentIndexChanged.connect(self.update_batch_preview)
+        grid_layout.addWidget(self.bulk_grid_combo)
+        left_layout.addLayout(grid_layout)
         
         generate_all_btn = QPushButton("Generate All Reports")
         generate_all_btn.clicked.connect(self.generate_all_batch_reports)
@@ -4922,7 +4944,9 @@ Use null for fields not found. Return ONLY valid JSON."""
     
         if dir_path:
             self.bulk_output_label.setText(dir_path)
+            self.output_dir_label.setText(dir_path) # SYNC
             self.settings.setValue('last_bulk_output_dir', dir_path)
+            self.settings.setValue('last_output_dir', dir_path) # SYNC
 
     def browse_and_parse_bulk_file(self):
         """Browse for Excel file and automatically parse it"""
@@ -5842,7 +5866,9 @@ Use null for fields not found. Return ONLY valid JSON."""
             return
             
         show_logo = self.bulk_logo_combo.currentText() == "With Logo"
-        self.batch_preview_worker = PreviewWorker(p_data, e_data, temp_pdf, show_logo=show_logo)
+        show_logo = self.bulk_logo_combo.currentText() == "With Logo"
+        show_grid = self.bulk_grid_combo.currentText() == "With Grid lines"
+        self.batch_preview_worker = PreviewWorker(p_data, e_data, temp_pdf, show_logo=show_logo, show_grid=show_grid)
         self.batch_preview_worker.finished.connect(lambda path: self.on_batch_preview_generated(path))
         self.batch_preview_worker.start()
 
@@ -6025,7 +6051,8 @@ Use null for fields not found. Return ONLY valid JSON."""
             self.generate_pdf_check.isChecked(),
             self.generate_docx_check.isChecked(),
             "PGT-A",
-            show_logo=(self.bulk_logo_combo.currentText() == "With Logo")
+            show_logo=(self.bulk_logo_combo.currentText() == "With Logo"),
+            show_grid=(self.bulk_grid_combo.currentText() == "With Grid lines")
         )
     
         self.worker.progress.connect(self.update_progress)
@@ -6346,7 +6373,9 @@ Use null for fields not found. Return ONLY valid JSON."""
         
         if dir_path:
             self.output_dir_label.setText(dir_path)
+            self.bulk_output_label.setText(dir_path) # SYNC
             self.settings.setValue('last_output_dir', dir_path)
+            self.settings.setValue('last_bulk_output_dir', dir_path) # SYNC
     
     def browse_manual_reports(self):
         """Browse for manual reports directory"""

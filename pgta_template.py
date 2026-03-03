@@ -312,16 +312,15 @@ class PGTAReportTemplate:
             fontName=self._get_font('SegoeUI-Bold', 'Helvetica-Bold')
         ))
     
-    def generate_pdf(self, output_path, patient_data, embryos_data, show_logo=True):
-        """
-        Generate PDF report
-        
-        Args:
-            output_path: Path to save PDF
-            patient_data: Dictionary with patient information
-            embryos_data: List of dictionaries with embryo data
-            show_logo: Whether to show header and footer branding
-        """
+    def _get_grid_style(self):
+        """Return grid style if enabled"""
+        if hasattr(self, 'show_grid') and self.show_grid:
+            return [('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E0E0E0"))]
+        return []
+
+    def generate_pdf(self, output_path, patient_data, embryos_data, show_logo=True, show_grid=False):
+        """Generate PGT-A report PDF"""
+        self.show_grid = show_grid
         # Create PDF document
         doc = SimpleDocTemplate(
             output_path,
@@ -431,7 +430,7 @@ class PGTAReportTemplate:
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(self.COLORS['grey_bg'])),
             ('TOPPADDING', (0, 0), (-1, -1), 6),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ]))
+        ] + self._get_grid_style()))
         elements.append(KeepTogether(disclaimer_table))
         elements.append(Spacer(1, 12))
         
@@ -560,7 +559,7 @@ class PGTAReportTemplate:
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(self.COLORS['patient_info_bg'])),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 4), # Extra padding to fill box height
             ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ]))
+        ] + self._get_grid_style()))
         
         return table
     
@@ -614,7 +613,7 @@ class PGTAReportTemplate:
             ('RIGHTPADDING', (0, 0), (-1, -1), 5),
             ('TOPPADDING', (0, 0), (-1, -1), 5),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ]))
+        ] + self._get_grid_style()))
         
         return table
     
@@ -709,7 +708,7 @@ class PGTAReportTemplate:
             ('RIGHTPADDING', (4, 0), (-1, -1), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-        ]))
+        ] + self._get_grid_style()))
         elements.append(info_table)
         elements.append(Spacer(1, 8))
         
@@ -725,7 +724,7 @@ class PGTAReportTemplate:
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(self.COLORS['grey_bg'])),
             ('TOPPADDING', (0, 0), (-1, -1), 6),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ]))
+        ] + self._get_grid_style()))
         elements.append(KeepTogether(disclaimer_table))
         elements.append(Spacer(1, 12))
         
@@ -803,7 +802,7 @@ class PGTAReportTemplate:
             ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
             ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
+        ] + self._get_grid_style()))
         elements.append(detail_table)
         elements.append(Spacer(1, 12))
         
@@ -935,10 +934,10 @@ class PGTAReportTemplate:
             ('RIGHTPADDING', (1, 0), (-1, -1), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 3),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ]))
+        ] + self._get_grid_style()))
         
         return table
-    
+
     def _create_signature_table(self):
         """Create signature section with precise structural metrics from source PDF"""
         elements = []
@@ -969,7 +968,7 @@ class PGTAReportTemplate:
                 ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
                 ('LEFTPADDING', (0, 0), (-1, -1), 0),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-            ]))
+            ] + self._get_grid_style()))
             elements.append(sig_img_table)
         except Exception as e:
             print(f"Error drawing individual signatures: {e}")
@@ -1005,7 +1004,7 @@ class PGTAReportTemplate:
             ('LINEAFTER', (0, 0), (-1, -1), 0, colors.white),
             ('LEFTPADDING', (0, 0), (-1, -1), 0),
             ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-        ]))
+        ] + self._get_grid_style()))
         
         elements.append(table)
         
@@ -1029,7 +1028,7 @@ class PGTAReportTemplate:
             # Increased bottom padding to 6pt as requested for visual gap between text and line
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
             ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-        ]))
+        ] + self._get_grid_style()))
         return KeepTogether(header_table)
 
     def _get_result_color(self, result_text, interpretation_text):
