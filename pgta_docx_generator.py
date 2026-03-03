@@ -364,7 +364,7 @@ class PGTADocxGenerator:
                     row.cells[2].text = self._clean(data.get(v1))
             if v2: row.cells[5].text = self._clean(data.get(v2))
             
-            for cell in row.cells:
+            for cell_idx, cell in enumerate(row.cells):
                 self._set_cell_background(cell, "F1F1F7")
                 cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
                 self._set_paragraph_font(cell.paragraphs[0], font_name="Segoe UI", font_size=10, bold=True)
@@ -373,7 +373,7 @@ class PGTADocxGenerator:
                 p_fmt.space_after = Pt(2)
                 
                 # Set cell alignment to match PDF strictly left aligned for values
-                cell_idx = row.cells.index(cell)
+                # Fixed: Use cell_idx from enumerate instead of row.cells.index(cell) to avoid tuple.index error
                 if cell_idx in [0, 3]:  # Label columns
                     cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
                     

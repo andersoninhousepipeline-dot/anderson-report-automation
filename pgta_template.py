@@ -1137,5 +1137,5 @@ if __name__ == "__main__":
     
     # Generate PDF
     output_path = "test_report.pdf"
-    template.generate_pdf(output_path, patient_data, embryos_data)
+    template.generate_pdf(output_path, patient_data, embryos_data, show_grid=True)
     print(f"Test report generated: {output_path}")
