@@ -250,16 +250,33 @@ class PGTAReportComparator:
             if m_data['sample_number'] and a_data['sample_number'] and m_data['sample_number'] != a_data['sample_number']:
                 discrepancies.append(f"Sample # Mismatch: Manual({m_data['sample_number']}) vs Auto({a_data['sample_number']})")
             
-            if len(m_data['embryos']) != len(a_data['embryos']):
-                discrepancies.append(f"Embryo Count: Manual({len(m_data['embryos'])}) vs Auto({len(a_data['embryos'])})")
-            elif not m_data['embryos']:
+            # ── Embryo comparison: match by ID, not position ─────────────────
+            if not m_data['embryos'] and not a_data['embryos']:
                 discrepancies.append("Warning: No embryo data extracted from either report.")
             else:
-                for i in range(len(m_data['embryos'])):
-                    emb_dis = self.compare_embryos(m_data['embryos'][i], a_data['embryos'][i])
+                # Build lookup maps: norm_id → embryo dict
+                def norm_id(eid):
+                    """Strip day-tag, normalise spacing, uppercase."""
+                    return re.sub(r'\s*\(D\d+\)\s*', '', str(eid)).strip().upper()
+
+                m_map = {norm_id(e['id']): e for e in m_data['embryos']}
+                a_map = {norm_id(e['id']): e for e in a_data['embryos']}
+
+                all_ids = sorted(set(m_map) | set(a_map))
+                for eid in all_ids:
+                    me = m_map.get(eid)
+                    ae = a_map.get(eid)
+                    if me is None:
+                        discrepancies.append(f"Embryo {eid}: present in Automated but MISSING in Manual")
+                        continue
+                    if ae is None:
+                        discrepancies.append(f"Embryo {eid}: present in Manual but MISSING in Automated")
+                        continue
+                    emb_dis = self.compare_embryos(me, ae)
                     if emb_dis:
-                        discrepancies.append(f"Embryo {i+1} differences:")
-                        for d in emb_dis: discrepancies.append(f"  {d}")
+                        discrepancies.append(f"Embryo {eid} ({me['id']}) differences:")
+                        for d in emb_dis:
+                            discrepancies.append(f"  {d}")
                         
             return {
                 'patient': m_data['patient_name'] or os.path.basename(manual_path),
