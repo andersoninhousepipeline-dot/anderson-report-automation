@@ -34,100 +34,166 @@ class PGTAReportComparator:
         name = re.sub(r'[^A-Z0-9\s]', '', name.upper())
         return ' '.join(name.split())
 
-    def extract_manual_data(self, file_path):
-        """Extract data from Manual report format."""
+    # ── Unified smart extractor ──────────────────────────────────────────────
+    def _extract_all_text(self, file_path):
+        """Return full text + per-page lines from PDF."""
         with open(file_path, "rb") as f:
             reader = PyPDF2.PdfReader(f)
-            text = reader.pages[0].extract_text()
-            
-        data = {'patient_name': '', 'pin': '', 'sample_number': '', 'indication': '', 'embryos': []}
-        lines = [l.strip() for l in text.split('\n') if l.strip()]
-        
+            pages = [p.extract_text() or "" for p in reader.pages]
+        full = "\n".join(pages)
+        lines = [l.strip() for l in full.split('\n') if l.strip()]
+        return full, lines
+
+    def _smart_extract(self, file_path):
+        """
+        Single extractor that handles both manual and automated PDF formats.
+        Tries inline 'Label : Value' style first, then next-line value style.
+        """
+        full_text, lines = self._extract_all_text(file_path)
+        data = {'patient_name': '', 'pin': '', 'sample_number': '', 'embryos': []}
+
+        # ── Patient info ──────────────────────────────────────────────────────
         for i, line in enumerate(lines):
-            if "Patient name" in line:
-                name_match = re.search(r'Patient name\s*:\s*(.*?)(?:\s*PIN|$)', line, re.IGNORECASE)
-                if name_match: data['patient_name'] = name_match.group(1).strip()
-            if "PIN" in line and not data['pin']:
-                pin_match = re.search(r'PIN\s*:\s*([A-Z0-9]+)', line)
-                if pin_match: data['pin'] = pin_match.group(1)
-            if "Sample Number" in line and not data['sample_number']:
-                sn_match = re.search(r'Sample Number\s*:\s*([0-9]+)', line)
-                if sn_match: data['sample_number'] = sn_match.group(1)
-        
-        results_start = False
-        for line in lines:
-            if "Results summary" in line: results_start = True; continue
-            if "Methodology" in line or "This test does not reveal" in line: results_start = False; continue
-            if results_start:
-                match = re.match(r'^(\d+)\s+([A-Z0-9]+(?:\s*\(D\d\))?)\s+(.*?)\s+([\d\.]+|NA)\s+(.*)$', line)
-                if match:
-                    res, mt, intp = match.group(3).strip(), match.group(4).strip(), match.group(5).strip()
-                    if mt.isdigit() and "NA" in intp:
-                        res = f"{res} {mt}"; parts = intp.split(); mt = parts[0]; intp = ' '.join(parts[1:])
-                    data['embryos'].append({'id': match.group(2).strip(), 'result': res, 'mtcopy': mt, 'interpretation': intp})
+            upper = line.upper()
+
+            # Inline style: "Patient name : PRIYA ..."
+            if not data['patient_name']:
+                m = re.search(r'Patient\s*name\s*[:\-]\s*(.+?)(?:\s+PIN\s*[:\-]|$)', line, re.IGNORECASE)
+                if m and m.group(1).strip():
+                    data['patient_name'] = m.group(1).strip()
+
+            # Next-line style: standalone "Patient name" followed by ":" then value
+            if not data['patient_name'] and upper.strip() in ('PATIENT NAME', 'PATIENT NAME :'):
+                for j in range(i+1, min(i+4, len(lines))):
+                    if lines[j].strip() not in (':', ''):
+                        data['patient_name'] = lines[j].strip()
+                        break
+
+            # PIN inline
+            if not data['pin']:
+                m = re.search(r'\bPIN\s*[:\-]\s*([A-Z0-9]{6,})', line)
+                if m:
+                    data['pin'] = m.group(1)
+
+            # PIN next-line
+            if not data['pin'] and upper.strip() == 'PIN':
+                for j in range(i+1, min(i+4, len(lines))):
+                    if re.match(r'^[A-Z0-9]{6,}$', lines[j].strip()):
+                        data['pin'] = lines[j].strip()
+                        break
+
+            # Sample Number
+            if not data['sample_number']:
+                m = re.search(r'Sample\s*Number\s*[:\-]\s*(\d+)', line, re.IGNORECASE)
+                if m:
+                    data['sample_number'] = m.group(1)
+            if not data['sample_number'] and 'SAMPLE NUMBER' in upper:
+                for j in range(i+1, min(i+4, len(lines))):
+                    if re.match(r'^\d+$', lines[j].strip()):
+                        data['sample_number'] = lines[j].strip()
+                        break
+
+        # ── Embryo results from Results Summary table ─────────────────────────
+        results_text = ""
+        m = re.search(r'Results?\s+summary(.+?)(?:Methodology|This test does not reveal|$)',
+                      full_text, re.IGNORECASE | re.DOTALL)
+        if m:
+            results_text = m.group(1)
+
+        # Try inline row format: "1  PS4  Trisomy of chr 16  NA  Aneuploid"
+        inline_rows = re.findall(
+            r'^(\d+)\s+([A-Z0-9]+(?:\s*\(D\d\))?)\s+(.+?)\s+([\d\.]+|NA)\s+([A-Za-z].+?)$',
+            results_text, re.MULTILINE)
+        if inline_rows:
+            for row in inline_rows:
+                data['embryos'].append({
+                    'id': row[1].strip(),
+                    'result': row[2].strip(),
+                    'mtcopy': row[3].strip(),
+                    'interpretation': row[4].strip()
+                })
+        else:
+            # Block format (automated): numbered blocks separated by embryo index lines
+            res_lines = [l.strip() for l in results_text.split('\n') if l.strip()
+                         and 'PNDT act' not in l and not l.startswith('[')]
+            i = 0
+            while i < len(res_lines):
+                if re.match(r'^\d+$', res_lines[i]):
+                    block = [res_lines[i]]
+                    i += 1
+                    while i < len(res_lines) and not re.match(r'^\d+$', res_lines[i]):
+                        block.append(res_lines[i])
+                        i += 1
+                    if len(block) >= 5:
+                        emb_id = block[1]
+                        remaining = ' '.join(block[2:])
+                        mt_m = re.search(r'\s+([\d\.]+|NA)\s+([A-Z][^\d]+)$', remaining)
+                        if mt_m:
+                            res = remaining[:mt_m.start()].strip()
+                            mt = mt_m.group(1).strip()
+                            intp = mt_m.group(2).strip()
+                        else:
+                            res, mt, intp = block[2], block[-2], block[-1]
+                        data['embryos'].append({'id': emb_id, 'result': res, 'mtcopy': mt, 'interpretation': intp})
+                else:
+                    i += 1
         return data
+
+    # Keep old methods as aliases so existing UI code still works
+    def extract_manual_data(self, file_path):
+        return self._smart_extract(file_path)
 
     def extract_automated_data(self, file_path):
-        """Extract data from Automated report format."""
-        with open(file_path, "rb") as f:
-            reader = PyPDF2.PdfReader(f)
-            text = reader.pages[0].extract_text()
-            
-        data = {'patient_name': '', 'pin': '', 'sample_number': '', 'indication': '', 'embryos': []}
-        lines = [l.strip() for l in text.split('\n') if l.strip()]
-        
-        for i, line in enumerate(lines):
-            if line.strip() == "PIN": data['pin'] = lines[i+2].strip()
-            if line.strip() == "Patient name": data['patient_name'] = lines[i+2].strip()
-            if line.strip() == "Sample Number": data['sample_number'] = lines[i+2].strip()
+        return self._smart_extract(file_path)
 
-        results_start = False
-        embryo_blocks, current_block = [], []
-        for line in lines:
-            if "Results summary" in line: results_start = True; continue
-            if "Methodology" in line: results_start = False; break
-            if results_start:
-                if re.match(r'^\d+$', line):
-                    if current_block: embryo_blocks.append(current_block)
-                    current_block = [line]
-                elif current_block:
-                    if not line.startswith('[') and not "PNDT act" in line:
-                        current_block.append(line)
-        if current_block: embryo_blocks.append(current_block)
-
-        for block in embryo_blocks:
-            if len(block) >= 5:
-                s_id = block[1]
-                if len(block) == 5:
-                    res, mt, intp = block[2], block[3], block[4]
-                else:
-                    remaining = ' '.join(block[2:])
-                    mt_match = re.search(r'\s+([\d\.]+|NA)\s+([A-Z].*)$', remaining)
-                    if mt_match:
-                        res, mt, intp = remaining[:mt_match.start()].strip(), mt_match.group(1).strip(), mt_match.group(2).strip()
-                    else:
-                        res, mt, intp = ' '.join(block[2:-2]), block[-2], block[-1]
-                data['embryos'].append({'id': s_id, 'result': res, 'mtcopy': mt, 'interpretation': intp})
-        return data
+    # ── Normalisation ─────────────────────────────────────────────────────────
+    def _norm_text(self, s):
+        """Aggressively normalise a text value for comparison."""
+        if not s: return ""
+        s = str(s)
+        # Collapse whitespace and uppercase
+        s = ' '.join(s.split()).upper()
+        # Remove day-tag like (D5), (D6)
+        s = re.sub(r'\(D\d\)', '', s)
+        # Normalise chromosome number representations: "chr 16" → "CHR16", "chromosome 16" → "CHR16"
+        s = re.sub(r'CHROMOSOME\s*(\d+)', r'CHR\1', s)
+        s = re.sub(r'CHR\s+(\d+)', r'CHR\1', s)
+        # Remove punctuation noise (commas, dots, hyphens between words)
+        s = re.sub(r'[,\.\-]+', ' ', s)
+        # Collapse again
+        return ' '.join(s.split())
 
     def compare_embryos(self, me, ae):
         discrepancies = []
-        norm_mid = re.sub(r'\(D\d\)', '', me['id']).strip()
-        norm_aid = re.sub(r'\(D\d\)', '', ae['id']).strip()
-        if norm_mid != norm_aid: discrepancies.append(f"ID Mismatch: Manual({me['id']}) vs Auto({ae['id']})")
-        
-        norm_mres = ' '.join(re.sub(r'\(D\d\)', '', me['result']).split()).strip().upper()
-        norm_ares = ' '.join(re.sub(r'\(D\d\)', '', ae['result']).split()).strip().upper()
-        if norm_mres != norm_ares: discrepancies.append(f"Result Mismatch: Manual({me['result']}) vs Auto({ae['result']})")
-            
-        if me['mtcopy'] != ae['mtcopy']: discrepancies.append(f"MTcopy Mismatch: Manual({me['mtcopy']}) vs Auto({ae['mtcopy']})")
-             
-        norm_mintp = ' '.join(me['interpretation'].split()).strip().upper()
-        norm_aintp = ' '.join(ae['interpretation'].split()).strip().upper()
+
+        norm_mid = self._norm_text(me['id'])
+        norm_aid = self._norm_text(ae['id'])
+        if norm_mid != norm_aid:
+            discrepancies.append(f"ID Mismatch: Manual({me['id']}) vs Auto({ae['id']})")
+
+        norm_mres = self._norm_text(me['result'])
+        norm_ares = self._norm_text(ae['result'])
+        if norm_mres != norm_ares:
+            # Allow if one is a substring of the other (handles truncation)
+            if norm_mres not in norm_ares and norm_ares not in norm_mres:
+                discrepancies.append(f"Result Mismatch:\n    Manual: {me['result']}\n    Auto:   {ae['result']}")
+
+        # MTcopy: treat both blank/"NA"/"0" equivalently
+        mt_m = me['mtcopy'].strip().upper() if me['mtcopy'] else 'NA'
+        mt_a = ae['mtcopy'].strip().upper() if ae['mtcopy'] else 'NA'
+        if mt_m in ('', '0', 'NA'): mt_m = 'NA'
+        if mt_a in ('', '0', 'NA'): mt_a = 'NA'
+        if mt_m != mt_a:
+            discrepancies.append(f"MTcopy Mismatch: Manual({me['mtcopy']}) vs Auto({ae['mtcopy']})")
+
+        norm_mintp = self._norm_text(me['interpretation'])
+        norm_aintp = self._norm_text(ae['interpretation'])
         if norm_mintp != norm_aintp:
-             if not (norm_mintp in norm_aintp or norm_aintp in norm_mintp):
-                 discrepancies.append(f"Intp Mismatch: Manual({me['interpretation']}) vs Auto({ae['interpretation']})")
+            if norm_mintp not in norm_aintp and norm_aintp not in norm_mintp:
+                discrepancies.append(f"Interpretation Mismatch:\n    Manual: {me['interpretation']}\n    Auto:   {ae['interpretation']}")
+
         return discrepancies
+
 
     def check_name_match(self, manual_path, auto_path):
         """Validate if two report files belong to the same patient."""
