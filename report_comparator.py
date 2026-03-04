@@ -8,8 +8,11 @@ class PGTAReportComparator:
     def __init__(self, manual_dir=None, automated_dir=None):
         self.manual_dir = manual_dir
         self.automated_dir = automated_dir
-        self.manual_files = sorted([f for f in os.listdir(manual_dir) if f.endswith('.pdf')]) if manual_dir and os.path.isdir(manual_dir) else []
-        self.automated_files = sorted([f for f in os.listdir(automated_dir) if f.endswith('.pdf')]) if automated_dir and os.path.isdir(automated_dir) else []
+        # Exclude CRC'd files (files containing 'crc' in the name, case-insensitive)
+        def _is_valid_pdf(f):
+            return f.endswith('.pdf') and 'crc' not in f.lower()
+        self.manual_files = sorted([f for f in os.listdir(manual_dir) if _is_valid_pdf(f)]) if manual_dir and os.path.isdir(manual_dir) else []
+        self.automated_files = sorted([f for f in os.listdir(automated_dir) if _is_valid_pdf(f)]) if automated_dir and os.path.isdir(automated_dir) else []
         
     def normalize_name(self, name):
         """Normalize patient name for matching."""

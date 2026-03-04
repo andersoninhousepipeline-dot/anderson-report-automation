@@ -1058,6 +1058,10 @@ class PGTAReportTemplate:
         """Special color logic for autosomes field"""
         if not autosome_text: return colors.black
         txt = autosome_text.upper()
+        # Red: Multiple chromosomal abnormalities
+        if "MULTIPLE CHROMOSOMAL ABNORMALITIES" in txt:
+            return colors.red
+        # Blue: Mosaic variants
         if "MULTIPLE MOSAIC CHROMOSOME COMPLEMENT" in txt:
             return colors.blue
         return colors.black
@@ -1066,9 +1070,16 @@ class PGTAReportTemplate:
         """Color logic for CNV status codes"""
         if not status: return colors.black
         s = status.upper().strip()
+        
+        # Combination codes (must check before single codes)
+        red_combos = ["SL/SG", "SG/SL"]
+        blue_combos = ["SML/SMG", "SMG/SML"]
+        if s in red_combos: return colors.red
+        if s in blue_combos: return colors.blue
+        
+        # Single codes
         red_codes = ["G", "L", "SG", "SL"]
         blue_codes = ["M", "MG", "ML", "SMG", "SML"]
-        
         if s in red_codes: return colors.red
         if s in blue_codes: return colors.blue
         
