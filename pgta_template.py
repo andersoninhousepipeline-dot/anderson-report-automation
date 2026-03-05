@@ -308,7 +308,7 @@ class PGTAReportTemplate:
             parent=self.styles['Normal'],
             fontSize=10, 
             leading=12,
-            alignment=TA_JUSTIFY,
+            alignment=TA_LEFT,
             fontName=self._get_font('SegoeUI-Bold', 'Helvetica-Bold')
         ))
     
@@ -539,8 +539,9 @@ class PGTAReportTemplate:
             [self._wrap_text('<b>Biopsy performed by</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_performed_by'))}</b>", max_width=140), self._wrap_text('<b>Report date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('report_date'))}</b>", max_width=144)]
         ]
         
-        # Create table with optimal widths to prevent 'Sample collection date' wrap [Total: 490pt]
-        table = Table(data, colWidths=[108, 12, 131, 108, 12, 119], hAlign='LEFT')
+        # Widths: left-label(108) + colon(12) + left-value(161) + right-label(108) + colon(12) + right-value(89) = 490pt
+        # Right-side block starts at 281pt from left edge (col0+col1+col2)
+        table = Table(data, colWidths=[108, 12, 161, 108, 12, 89], hAlign='LEFT')
         
         # Style table
         table.setStyle(TableStyle([
@@ -681,31 +682,29 @@ class PGTAReportTemplate:
         combined_name = f"{patient_name}<br/>{spouse_name}" if spouse_name else patient_name
 
         info_data = [[
-            self._wrap_label('Patient name'),
-            _wrap_banner(':'),
+            self._wrap_label('Patient name:'),
             _wrap_banner(f"<b>{combined_name}</b>"),
-            Paragraph(f"<nobr>PIN</nobr>", self.styles['PGTALabelTextRight']),
-            _wrap_banner(':'),
+            Paragraph(f"<nobr>PIN:</nobr>", self.styles['PGTALabelTextRight']),
             _wrap_banner(f"<b>{self._clean(patient_data.get('pin'))}</b>")
         ]]
         
-        # Optimized widths for detailed banner [Total: 490pt]
-        info_table = Table(info_data, colWidths=[88, 6, 149, 88, 6, 153], hAlign='LEFT')
+        # Tight label col (78pt ≈ text width) removes gap: label(78) + value(165) + label(94) + value(153) = 490pt
+        info_table = Table(info_data, colWidths=[78, 165, 94, 153], hAlign='LEFT')
         info_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(self.COLORS['patient_info_bg'])),
             ('FONTNAME', (0, 0), (-1, -1), self._get_font('SegoeUI-Bold', 'Helvetica-Bold')),
             ('FONTSIZE', (0, 0), (-1, -1), 10),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'), # Standard LEFT alignment
-            ('ALIGN', (3, 0), (3, -1), 'LEFT'), # Standard LEFT alignment
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),  # Patient name label LEFT
+            ('ALIGN', (2, 0), (2, -1), 'RIGHT'),  # PIN label RIGHT
             ('LEFTPADDING', (0, 0), (0, -1), 4),
-            ('LEFTPADDING', (3, 0), (3, -1), 0),
-            ('LEFTPADDING', (1, 0), (2, -1), 0),
-            ('LEFTPADDING', (4, 0), (-1, -1), 0),
-            ('RIGHTPADDING', (3, 0), (3, -1), 12),
+            ('LEFTPADDING', (1, 0), (1, -1), 0),
+            ('LEFTPADDING', (2, 0), (2, -1), 0),
+            ('LEFTPADDING', (3, 0), (3, -1), 4),
             ('RIGHTPADDING', (0, 0), (0, -1), 0),
-            ('RIGHTPADDING', (1, 0), (2, -1), 0),
-            ('RIGHTPADDING', (4, 0), (-1, -1), 0),
+            ('RIGHTPADDING', (1, 0), (1, -1), 0),
+            ('RIGHTPADDING', (2, 0), (2, -1), 4),
+            ('RIGHTPADDING', (3, 0), (3, -1), 0),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
         ] + self._get_grid_style()))
@@ -733,19 +732,25 @@ class PGTAReportTemplate:
         autosomes_text = self._clean(embryo_data.get('autosomes'))
         interp_text = self._clean(embryo_data.get('interpretation'))
         sex_text = self._clean(embryo_data.get('sex_chromosomes', 'Normal'))
+        result_summary_text = self._clean(embryo_data.get('result_summary', ''))
         
         # Color based on interpretation for interpretation field
-        interp_color = self._get_result_color('', interp_text)
+        # Also pass result_summary so "Multiple chromosomal abnormalities" drives red color
+        interp_color = self._get_result_color(result_summary_text, interp_text)
         
         # Autosomes Color Logic:
         # Blue (mosaic) = Has % sign (e.g., +15(~30%), -20(~51%), dup(9)...(~32%))
         # Red (non-mosaic) = del/dup/-/+ without %, or CNV status L/G/SL/SG
+        # Red = Multiple chromosomal abnormalities (explicit result_summary check)
         # Black = Normal/Euploid
         auto_color = colors.black
         auto_upper = autosomes_text.upper()
         
-        # Check for Normal/Euploid first
-        if 'NORMAL' in auto_upper or 'EUPLOID' in auto_upper or not autosomes_text.strip():
+        # Check for "Multiple chromosomal abnormalities" in result_summary first
+        if "MULTIPLE CHROMOSOMAL ABNORMALITIES" in result_summary_text.upper():
+            auto_color = colors.red
+        # Check for Normal/Euploid
+        elif 'NORMAL' in auto_upper or 'EUPLOID' in auto_upper or not autosomes_text.strip():
             auto_color = colors.black
         # Mosaic = has % sign
         elif '%' in autosomes_text:
@@ -783,9 +788,10 @@ class PGTAReportTemplate:
         elements.append(Paragraph(f"<b>EMBRYO: {detail_embryo_id}</b>", embryo_id_style))
         elements.append(Spacer(1, 6))
         
-        # Result Row: "Mention in black colour" (User Request)
+        # Result row: color driven by result_summary (Multiple chromosomal abnormalities = red)
+        result_row_color = self._get_result_color(result_summary_text, interp_text)
         detail_data = [
-            [self._wrap_text(f"<b>Result:</b> {self._wrap_colored(res_text, colors.black, bold=False)}", False)],
+            [self._wrap_text(f"<b>Result:</b> {self._wrap_colored(res_text, result_row_color, bold=False)}", False)],
             [self._wrap_text(f"<b>Autosomes:</b> {self._wrap_colored(autosomes_text, auto_color, bold=False)}", False)],
             [self._wrap_text(f"<b>Sex Chromosomes:</b> {self._wrap_colored(sex_text, sex_color, bold=False)}", False)],
             [self._wrap_text(f"<b>Interpretation:</b> {self._wrap_colored(interp_text, interp_color, bold=False)}", False)],

@@ -40,6 +40,13 @@ except ImportError:
     QPdfDocument = None
     QPdfView = None
 
+try:
+    import pypdfium2 as _pdfium
+    PYPDFIUM_OK = True
+except ImportError:
+    _pdfium = None
+    PYPDFIUM_OK = False
+
 import pandas as pd
 # Add templates directory to path to import modular generators (currently only PGT-A)
 # We will keep the structure but use ReportLab classes
@@ -1157,21 +1164,33 @@ class PGTAReportGeneratorApp(QMainWindow):
         preview_layout = QVBoxLayout()
         preview_group.setLayout(preview_layout)
         
-        if QPdfView and QPdfDocument:
-            self.batch_pdf_document = QPdfDocument(self)
-            self.batch_pdf_view = QPdfView(self)
-            self.batch_pdf_view.setDocument(self.batch_pdf_document)
-            self.batch_pdf_view.setPageMode(QPdfView.PageMode.MultiPage)
-            preview_layout.addWidget(self.batch_pdf_view)
-        else:
-            self.batch_pdf_view = QLabel("PDF Preview not available")
-            self.batch_pdf_view.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            preview_layout.addWidget(self.batch_pdf_view)
-            
+        # --- Preview Side (Right of Right Panel) --- TERA-style pypdfium2 renderer ---
+        preview_group = QGroupBox("Batch Report Preview")
+        preview_layout = QVBoxLayout()
+        preview_group.setLayout(preview_layout)
+
+        # Status label + Refresh button toolbar
+        prev_top = QHBoxLayout()
+        self.batch_preview_status = QLabel("Select a patient to preview")
+        self.batch_preview_status.setStyleSheet("color:gray;font-style:italic;")
+        self.batch_preview_status.setWordWrap(True)
+        prev_top.addWidget(self.batch_preview_status, 1)
         refresh_batch_btn = QPushButton("Refresh Preview")
+        refresh_batch_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
         refresh_batch_btn.clicked.connect(self.update_batch_preview)
-        preview_layout.addWidget(refresh_batch_btn)
-        
+        prev_top.addWidget(refresh_batch_btn)
+        preview_layout.addLayout(prev_top)
+
+        # Scrollable page area (TERA-style: each page is a QLabel pixmap)
+        prev_scroll = QScrollArea()
+        prev_scroll.setWidgetResizable(True)
+        self.batch_preview_inner = QWidget()
+        self.batch_preview_vbox = QVBoxLayout(self.batch_preview_inner)
+        self.batch_preview_vbox.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+        prev_scroll.setWidget(self.batch_preview_inner)
+        preview_layout.addWidget(prev_scroll, 1)
+
         self.bulk_editor_splitter.addWidget(preview_group)
         self.bulk_editor_splitter.setSizes([500, 500])
         
@@ -5814,10 +5833,12 @@ Use null for fields not found. Return ONLY valid JSON."""
         self.batch_preview_timer.start()
 
     def start_batch_preview_generation(self):
-        """Generate temp PDF for batch patient and show in preview"""
-        if not hasattr(self, 'batch_pdf_view') or isinstance(self.batch_pdf_view, QLabel):
+        """Generate temp PDF for batch patient and show in TERA-style preview"""
+        if not PYPDFIUM_OK:
+            if hasattr(self, 'batch_preview_status'):
+                self.batch_preview_status.setText("PDF preview unavailable — install pypdfium2")
             return
-            
+
         if not hasattr(self, 'current_batch_index'):
             return
 
@@ -5873,10 +5894,41 @@ Use null for fields not found. Return ONLY valid JSON."""
         self.batch_preview_worker.start()
 
     def on_batch_preview_generated(self, pdf_path):
-        """Load generated batch PDF into viewer"""
-        if QPdfDocument and hasattr(self, 'batch_pdf_document') and os.path.exists(pdf_path):
-            self.batch_pdf_document.load(pdf_path)
-            self.batch_pdf_view.setZoomMode(QPdfView.ZoomMode.FitInView)
+        """TERA-style: render each page via pypdfium2 and show as QLabel pixmaps"""
+        if not PYPDFIUM_OK or not os.path.exists(pdf_path):
+            return
+        try:
+            from io import BytesIO
+            # Clear previous page images
+            while self.batch_preview_vbox.count():
+                item = self.batch_preview_vbox.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            doc = _pdfium.PdfDocument(pdf_path)
+            # Fill preview panel width (subtract scrollbar + padding)
+            target_w = max(self.batch_preview_inner.width() - 24, 560)
+            for page_idx in range(len(doc)):
+                bm  = doc[page_idx].render(scale=2.5)
+                pil = bm.to_pil()
+                buf = BytesIO()
+                pil.save(buf, format="PNG")
+                buf.seek(0)
+                px = QPixmap()
+                px.loadFromData(buf.read())
+                px = px.scaledToWidth(target_w,
+                    Qt.TransformationMode.SmoothTransformation)
+                lbl = QLabel()
+                lbl.setPixmap(px)
+                lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+                lbl.setStyleSheet("border:1px solid #ccc;margin:4px 0;background:white;")
+                self.batch_preview_vbox.addWidget(lbl)
+            doc.close()
+            if hasattr(self, 'batch_preview_status'):
+                self.batch_preview_status.setText(
+                    f"Preview updated ({datetime.now().strftime('%H:%M:%S')})")
+        except Exception as e:
+            if hasattr(self, 'batch_preview_status'):
+                self.batch_preview_status.setText(f"Render error: {e}")
 
     def preview_batch_patient_pdf(self):
         """Preview PDF for current batch patient"""
