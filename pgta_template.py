@@ -789,9 +789,8 @@ class PGTAReportTemplate:
         elements.append(Spacer(1, 6))
         
         # Result row: color driven by result_summary (Multiple chromosomal abnormalities = red)
-        result_row_color = self._get_result_color(result_summary_text, interp_text)
         detail_data = [
-            [self._wrap_text(f"<b>Result:</b> {self._wrap_colored(res_text, result_row_color, bold=False)}", False)],
+            [self._wrap_text(f"<b>Result:</b> {self._wrap_colored(res_text, colors.black, bold=False)}", False)],
             [self._wrap_text(f"<b>Autosomes:</b> {self._wrap_colored(autosomes_text, auto_color, bold=False)}", False)],
             [self._wrap_text(f"<b>Sex Chromosomes:</b> {self._wrap_colored(sex_text, sex_color, bold=False)}", False)],
             [self._wrap_text(f"<b>Interpretation:</b> {self._wrap_colored(interp_text, interp_color, bold=False)}", False)],
