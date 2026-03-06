@@ -341,12 +341,12 @@ class PGTADocxGenerator:
         combined_name = f"{patient_name}\n{spouse_name}" if spouse_name else patient_name
         
         rows_map = [
-            ("Patient name", combined_name, "PIN", "pin"),
-            ("Date of Birth/ Age", "age", "Sample Number", "sample_number"),
-            ("Referring Clinician", "referring_clinician", "Biopsy date", "biopsy_date"),
-            ("Hospital/Clinic", "hospital_clinic", "Sample collection date", "sample_collection_date"),
-            ("Specimen", "specimen", "Sample receipt date", "sample_receipt_date"),
-            ("Biopsy performed by", "biopsy_performed_by", "Report date", "report_date")
+            ("PATIENT NAME", combined_name, "PIN", "pin"),
+            ("DATE OF BIRTH/ AGE", "age", "SAMPLE NUMBER", "sample_number"),
+            ("REFERRING CLINICIAN", "referring_clinician", "BIOPSY DATE", "biopsy_date"),
+            ("HOSPITAL/CLINIC", "hospital_clinic", "SAMPLE COLLECTION DATE", "sample_collection_date"),
+            ("SPECIMEN", "specimen", "SAMPLE RECEIPT DATE", "sample_receipt_date"),
+            ("BIOPSY PERFORMED BY", "biopsy_performed_by", "REPORT DATE", "report_date")
         ]
         for r_idx, (l1, v1, l2, v2) in enumerate(rows_map):
             if r_idx >= len(table.rows): break

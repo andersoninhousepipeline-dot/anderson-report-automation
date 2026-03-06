@@ -531,12 +531,12 @@ class PGTAReportTemplate:
         combined_name = f"{patient_name}<br/>{spouse_name}" if spouse_name else patient_name
         
         data = [
-            [self._wrap_text('<b>Patient name</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{combined_name}</b>", max_width=140), self._wrap_text('<b>PIN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('pin'))}</b>", max_width=144)],
-            [self._wrap_text('<b>Date of Birth/ Age</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('age'))}</b>", max_width=140), self._wrap_text('<b>Sample Number</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_number'))}</b>", max_width=144)],
-            [self._wrap_text('<b>Referring Clinician</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('referring_clinician'))}</b>", max_width=140), self._wrap_text('<b>Biopsy date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_date'))}</b>", max_width=144)],
-            [self._wrap_text('<b>Hospital/Clinic</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('hospital_clinic'))}</b>", max_width=140), self._wrap_text('<b>Sample collection date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_collection_date'))}</b>", max_width=144)],
-            [self._wrap_text('<b>Specimen</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('specimen'))}</b>", max_width=140), self._wrap_text('<b>Sample receipt date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_receipt_date'))}</b>", max_width=144)],
-            [self._wrap_text('<b>Biopsy performed by</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_performed_by'))}</b>", max_width=140), self._wrap_text('<b>Report date</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('report_date'))}</b>", max_width=144)]
+            [self._wrap_text('<b>PATIENT NAME</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{combined_name}</b>", max_width=140), self._wrap_text('<b>PIN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('pin'))}</b>", max_width=144)],
+            [self._wrap_text('<b>DATE OF BIRTH/ AGE</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('age'))}</b>", max_width=140), self._wrap_text('<b>SAMPLE NUMBER</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_number'))}</b>", max_width=144)],
+            [self._wrap_text('<b>REFERRING CLINICIAN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('referring_clinician'))}</b>", max_width=140), self._wrap_text('<b>BIOPSY DATE</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_date'))}</b>", max_width=144)],
+            [self._wrap_text('<b>HOSPITAL/CLINIC</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('hospital_clinic'))}</b>", max_width=140), self._wrap_text('<b>SAMPLE COLLECTION DATE</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_collection_date'))}</b>", max_width=144)],
+            [self._wrap_text('<b>SPECIMEN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('specimen'))}</b>", max_width=140), self._wrap_text('<b>SAMPLE RECEIPT DATE</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_receipt_date'))}</b>", max_width=144)],
+            [self._wrap_text('<b>BIOPSY PERFORMED BY</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_performed_by'))}</b>", max_width=140), self._wrap_text('<b>REPORT DATE</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('report_date'))}</b>", max_width=144)]
         ]
         
         # Widths: left-label(108) + colon(12) + left-value(161) + right-label(108) + colon(12) + right-value(89) = 490pt
@@ -682,7 +682,7 @@ class PGTAReportTemplate:
         combined_name = f"{patient_name}<br/>{spouse_name}" if spouse_name else patient_name
 
         info_data = [[
-            self._wrap_label('Patient name:'),
+            self._wrap_label('PATIENT NAME:'),
             _wrap_banner(f"<b>{combined_name}</b>"),
             Paragraph(f"<nobr>PIN:</nobr>", self.styles['PGTALabelTextRight']),
             _wrap_banner(f"<b>{self._clean(patient_data.get('pin'))}</b>")
