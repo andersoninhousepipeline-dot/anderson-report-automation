@@ -73,7 +73,7 @@ python3 pgta_report_generator.py
 | Biopsy_Date | 03-01-2026 | ✅ |
 | Hospital_Clinic | Rhea Healthcare | ✅ |
 | Sample_Collection_Date | 03-01-2026 | ✅ |
-| Specimen | Day 6 Trophectoderm Biopsy | ✅ |
+| Specimen | DAY 5 TROPHECTODERM BIOPSY | ✅ |
 | Sample_Receipt_Date | 03-01-2026 | ✅ |
 | Biopsy_Performed_By | Dr. Example | ✅ |
 | Report_Date | 14-01-2026 | ✅ |

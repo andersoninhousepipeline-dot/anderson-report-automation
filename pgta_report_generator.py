@@ -414,7 +414,7 @@ class PGTAReportGeneratorApp(QMainWindow):
         self.sample_collection_date_input.setPlaceholderText("DD-MM-YYYY")
         self.specimen_input = QTextEdit()
         self.specimen_input.setMaximumHeight(40)
-        self.specimen_input.setText("Day 6 Trophectoderm Biopsy")
+        self.specimen_input.setText("DAY 5 TROPHECTODERM BIOPSY")
         self.sample_receipt_date_input = QLineEdit()
         self.sample_receipt_date_input.setPlaceholderText("DD-MM-YYYY")
         self.biopsy_performed_by_input = QTextEdit()
@@ -4874,7 +4874,7 @@ Use null for fields not found. Return ONLY valid JSON."""
             
             self.indication_input.clear()
             self.report_date_input.setText(datetime.now().strftime("%d-%m-%Y"))
-            self.specimen_input.setText("Day 6 Trophectoderm Biopsy")
+            self.specimen_input.setText("DAY 5 TROPHECTODERM BIOPSY")
             
             # Reset embryo count
             self.embryo_count_spin.setValue(1)
@@ -4934,7 +4934,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                 'Biopsy_Date': ['01-01-2026'],
                 'Hospital_Clinic': ['Example Hospital'],
                 'Sample_Collection_Date': ['01-01-2026'],
-                'Specimen': ['Day 6 Trophectoderm Biopsy'],
+                'Specimen': ['DAY 5 TROPHECTODERM BIOPSY'],
                 'Sample_Receipt_Date': ['01-01-2026'],
                 'Biopsy_Performed_By': ['Dr. Example'],
                 'Report_Date': ['01-01-2026'],
@@ -5072,7 +5072,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                     'biopsy_date': b_date,
                     'hospital_clinic': get_clean_value(p_row, ['Center name', 'Hospital', 'Clinic', 'Center']),
                     'sample_collection_date': b_date,
-                    'specimen': get_clean_value(p_row, ['Specimen Type', 'Sample Type'], 'Day 6 Trophectoderm Biopsy'),
+                    'specimen': get_clean_value(p_row, ['Specimen Type', 'Sample Type'], 'DAY 5 TROPHECTODERM BIOPSY'),
                     'sample_receipt_date': r_date,
                     'biopsy_performed_by': get_clean_value(p_row, ['EMBRYOLOGIST NAME', 'Biologist']),
                     'report_date': rep_date,
@@ -5454,7 +5454,7 @@ Use null for fields not found. Return ONLY valid JSON."""
         self.batch_hospital = QTextEdit(data['patient_info']['hospital_clinic'])
         self.batch_hospital.setMaximumHeight(40)
         self.batch_sample_collection_date = QLineEdit(data['patient_info'].get('sample_collection_date', ''))
-        self.batch_specimen = QTextEdit(data['patient_info'].get('specimen', 'Day 6 Trophectoderm Biopsy'))
+        self.batch_specimen = QTextEdit(data['patient_info'].get('specimen', 'DAY 5 TROPHECTODERM BIOPSY'))
         self.batch_specimen.setMaximumHeight(40)
         self.batch_sample_receipt_date = QLineEdit(data['patient_info'].get('sample_receipt_date', ''))
         self.batch_biopsy_performed_by = QTextEdit(data['patient_info'].get('biopsy_performed_by', ''))
@@ -6171,7 +6171,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                     'biopsy_date': clean_val(first_row.get(get_col_name(df, ['Biopsy_Date', 'Biopsy Date']))),
                     'hospital_clinic': clean_val(first_row.get(get_col_name(df, ['Hospital_Clinic', 'Hospital/Clinic', 'Hospital']))),
                     'sample_collection_date': clean_val(first_row.get(get_col_name(df, ['Sample_Collection_Date', 'Sample Collection Date']))),
-                    'specimen': clean_val(first_row.get(get_col_name(df, ['Specimen'])), "Day 6 Trophectoderm Biopsy"),
+                    'specimen': clean_val(first_row.get(get_col_name(df, ['Specimen'])), "DAY 5 TROPHECTODERM BIOPSY"),
                     'sample_receipt_date': clean_val(first_row.get(get_col_name(df, ['Sample_Receipt_Date', 'Sample Receipt Date']))),
                     'biopsy_performed_by': clean_val(first_row.get(get_col_name(df, ['Biopsy_Performed_By', 'Biopsy Performed By']))),
                     'report_date': clean_val(first_row.get(get_col_name(df, ['Report_Date', 'Report Date'])), datetime.now().strftime("%d-%m-%Y")),

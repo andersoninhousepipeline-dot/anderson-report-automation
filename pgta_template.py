@@ -1126,7 +1126,7 @@ if __name__ == "__main__":
         'biopsy_date': '03-01-2026',
         'hospital_clinic': 'Rhea Healthcare Private Limited Annanagar (NOVA IVF)',
         'sample_collection_date': '03-01-2026',
-        'specimen': 'Day 6 Trophectoderm Biopsy',
+        'specimen': 'DAY 5 TROPHECTODERM BIOPSY',
         'sample_receipt_date': '03-01-2026',
         'biopsy_performed_by': 'Raj Priya Pandian',
         'report_date': '14-01-2026',
