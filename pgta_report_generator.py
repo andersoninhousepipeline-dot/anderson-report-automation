@@ -6169,7 +6169,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                     'sample_number': clean_val(sample_num),
                     'referring_clinician': clean_val(first_row.get(get_col_name(df, ['Referring_Clinician', 'Referring Clinician', 'Clinician']))),
                     'biopsy_date': clean_val(first_row.get(get_col_name(df, ['Biopsy_Date', 'Biopsy Date']))),
-                    'hospital_clinic': clean_val(first_row.get(get_col_name(df, ['Hospital_Clinic', 'Hospital/Clinic', 'Hospital']))),
+                    'hospital_clinic': clean_val(first_row.get(get_col_name(df, ['Center name', 'Center', 'Hospital_Clinic', 'Hospital/Clinic', 'Hospital']))),
                     'sample_collection_date': clean_val(first_row.get(get_col_name(df, ['Sample_Collection_Date', 'Sample Collection Date']))),
                     'specimen': clean_val(first_row.get(get_col_name(df, ['Specimen'])), "DAY 5 TROPHECTODERM BIOPSY"),
                     'sample_receipt_date': clean_val(first_row.get(get_col_name(df, ['Sample_Receipt_Date', 'Sample Receipt Date']))),
