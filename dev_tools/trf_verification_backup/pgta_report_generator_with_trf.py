@@ -4943,7 +4943,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                     'sample_number': '',  # Not extracted from Excel - user must fill manually
                     'referring_clinician': '',  # Not extracted from Excel - user must fill manually
                     'biopsy_date': b_date,
-                    'hospital_clinic': get_clean_value(p_row, ['Center name', 'Hospital', 'Clinic', 'Center']),
+                    'hospital_clinic': get_clean_value(p_row, ['Hospital/Clinic Name', 'Hospital/Clinic', 'Hospital_Clinic', 'Center name', 'Hospital', 'Clinic', 'Center']),
                     'sample_collection_date': b_date,
                     'specimen': get_clean_value(p_row, ['Specimen Type', 'Sample Type'], 'Day 6 Trophectoderm Biopsy'),
                     'sample_receipt_date': r_date,
