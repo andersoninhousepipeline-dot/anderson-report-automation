@@ -689,8 +689,8 @@ class PGTAReportTemplate:
         ]]
         
         # Optimized layout: Push PIN block right. PATIENT NAME (82pt), PIN (24pt)
-        # 82 + 284 + 24 + 100 = 490pt
-        info_table = Table(info_data, colWidths=[82, 284, 24, 100], hAlign='LEFT')
+        # Shifted slightly left (-30pt on spacer column): 82 + 254 + 24 + 130 = 490pt
+        info_table = Table(info_data, colWidths=[82, 254, 24, 130], hAlign='LEFT')
         info_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(self.COLORS['patient_info_bg'])),
             ('FONTNAME', (0, 0), (-1, -1), self._get_font('SegoeUI-Bold', 'Helvetica-Bold')),
