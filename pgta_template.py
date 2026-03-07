@@ -688,8 +688,8 @@ class PGTAReportTemplate:
             _wrap_banner(f"<b>{self._clean(patient_data.get('pin'))}</b>")
         ]]
         
-        # Adjusted label col (95pt) to prevent "PATIENT NAME:" from wrapping and minimize gap
-        info_table = Table(info_data, colWidths=[95, 148, 94, 153], hAlign='LEFT')
+        # Optimized label col (82pt) to perfectly fit "PATIENT NAME:" (76.6pt + 4pt padding) without gap
+        info_table = Table(info_data, colWidths=[82, 161, 94, 153], hAlign='LEFT')
         info_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(self.COLORS['patient_info_bg'])),
             ('FONTNAME', (0, 0), (-1, -1), self._get_font('SegoeUI-Bold', 'Helvetica-Bold')),
