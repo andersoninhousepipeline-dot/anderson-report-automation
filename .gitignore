@@ -25,3 +25,8 @@ comparison_dashboard.html
 comparison_log.md
 comparison_results.md
 comparison_report.html
+
+# Data sheets
+*.xlsx
+*.csv
+*.tsv
