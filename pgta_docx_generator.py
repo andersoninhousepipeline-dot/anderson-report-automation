@@ -440,8 +440,8 @@ class PGTADocxGenerator:
         banner = doc.add_table(rows=2, cols=6)
         self._apply_grid_to_table(banner)
         self._set_table_fixed_layout(banner)
-        # Optimized label cols: PATIENT NAME (82pt), PIN (24pt), Values fill the rest (161+223)
-        self._set_column_widths(banner, [82, 12, 149, 24, 12, 211])
+        # Optimized layout: Push PIN block right. PATIENT NAME (82), Colons (12x2), PIN label (24).
+        self._set_column_widths(banner, [82, 12, 272, 24, 12, 88])
         # Ensure table is aligned to the left like cover page
         banner.alignment = WD_ALIGN_PARAGRAPH.LEFT
         self._populate_patient_table(banner, patient_data, is_embryo=True)
