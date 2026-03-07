@@ -5144,7 +5144,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                     if norm_sample_id and norm_sample_id in norm_s_name:
                         match_type = 'sample_id'
                     # Fallback to patient name matching
-                    elif norm_p_name and norm_p_name in norm_s_name:
+                    elif norm_p_name and norm_s_name.startswith(norm_p_name):
                         match_type = 'patient_name'
                     
                     if match_type:
@@ -5371,12 +5371,10 @@ Use null for fields not found. Return ONLY valid JSON."""
                             'chromosome_statuses': chr_statuses,
                             'mosaic_percentages': mosaic_percentages # Pass properly
                         })
-                
-                if embryos:
-                    self.bulk_patient_data_list.append({
-                        'patient_info': patient_info,
-                        'embryos': embryos
-                    })
+                self.bulk_patient_data_list.append({
+                    'patient_info': patient_info,
+                    'embryos': embryos
+                })
             
             # Populate batch list
             self.batch_list_widget.clear()
