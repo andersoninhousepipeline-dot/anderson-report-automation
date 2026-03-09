@@ -1570,6 +1570,16 @@ class PGTAReportGeneratorApp(QMainWindow):
         self.update_preview()
         self.statusBar().showMessage(f"Embryo data copied to {new_index+1}")
 
+    def _get_preview_color_class(self, res_sum, interp):
+        interp_upper = str(interp).upper()
+        res_sum_upper = str(res_sum).upper()
+        
+        if "ANEUPLOID" in interp_upper or "CHAOTIC" in interp_upper or "MULTIPLE" in res_sum_upper:
+            return "text-red"
+        elif "MOSAIC" in interp_upper or "MOSAIC" in res_sum_upper:
+            return "text-blue"
+        return ""
+
     def generate_preview_html(self):
         """Generate high-fidelity HTML for preview"""
         # Collect data
@@ -1802,6 +1812,7 @@ class PGTAReportGeneratorApp(QMainWindow):
             </div>
         """
 
+        return html
         
     def get_manual_data_dict(self):
         """Collect current manual entry data into a dictionary with 'nan' sanitation"""
@@ -1851,6 +1862,7 @@ class PGTAReportGeneratorApp(QMainWindow):
             autosomes = ""
             sex = ""
             cnv_image_path = None
+            inconclusive_comment = ""
             chr_statuses = {}
             mosaic_percentages = {}
             detail_embryo_id = t_id  # Default to same as summary, but can be overridden
@@ -1872,6 +1884,9 @@ class PGTAReportGeneratorApp(QMainWindow):
                      path = form['chart_path_label'].property("filepath")
                      if path and os.path.exists(path):
                          cnv_image_path = path
+                         
+                if 'inconclusive_comment' in form:
+                     inconclusive_comment = form['inconclusive_comment'].toPlainText()
 
                 # Chromosomes
                 for k in range(1, 23):
@@ -1900,6 +1915,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                 'autosomes': autosomes,
                 'sex_chromosomes': sex,
                 'cnv_image_path': cnv_image_path,
+                'inconclusive_comment': inconclusive_comment,
                 'chromosome_statuses': chr_statuses,
                 'mosaic_percentages': mosaic_percentages
             }
@@ -2032,6 +2048,9 @@ class PGTAReportGeneratorApp(QMainWindow):
             if path and os.path.exists(path) and 'chart_path_label' in form:
                  form['chart_path_label'].setText(os.path.basename(path))
                  form['chart_path_label'].setProperty("filepath", path)
+                 
+            if 'inconclusive_comment' in form:
+                 form['inconclusive_comment'].setText(embryo.get('inconclusive_comment', ''))
             
             # Chromosomes
             chr_statuses = embryo.get('chromosome_statuses', {})
