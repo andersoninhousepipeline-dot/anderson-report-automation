@@ -690,23 +690,31 @@ class PGTAReportGeneratorApp(QMainWindow):
         if not hasattr(self, 'pdf_view') or isinstance(self.pdf_view, QLabel):
             return
 
+        def sanitize_single_line(text):
+            if text is None: return ""
+            return " ".join(text.strip().splitlines())
+
+        def sanitize_multi_line(text):
+            if text is None: return ""
+            return text.strip()
+
         # Gather data from form
         p_data = {
-            'patient_name': self.patient_name_input.toPlainText(),
-            'spouse_name': self.spouse_name_input.toPlainText(),
-            'pin': self.pin_input.toPlainText(),
-            'age': self.age_input.toPlainText(),
-            'sample_number': self.sample_number_input.toPlainText(),
-            'referring_clinician': self.referring_clinician_input.toPlainText(),
-            'biopsy_date': self.biopsy_date_input.text(),
-            'hospital_clinic': self.hospital_clinic_input.toPlainText(),
-            'sample_collection_date': self.sample_collection_date_input.text(),
-            'specimen': self.specimen_input.toPlainText(),
-            'sample_receipt_date': self.sample_receipt_date_input.text(),
-            'biopsy_performed_by': self.biopsy_performed_by_input.toPlainText(),
-            'report_date': self.report_date_input.text(),
-            'indication': self.indication_input.toPlainText(),
-            'results_summary_comment': self.results_summary_comment.toPlainText() if hasattr(self, 'results_summary_comment') else ''
+            'patient_name': sanitize_single_line(self.patient_name_input.toPlainText()),
+            'spouse_name': sanitize_single_line(self.spouse_name_input.toPlainText()),
+            'pin': sanitize_single_line(self.pin_input.toPlainText()),
+            'age': sanitize_single_line(self.age_input.toPlainText()),
+            'sample_number': sanitize_single_line(self.sample_number_input.toPlainText()),
+            'referring_clinician': sanitize_single_line(self.referring_clinician_input.toPlainText()),
+            'biopsy_date': sanitize_single_line(self.biopsy_date_input.text()),
+            'hospital_clinic': sanitize_single_line(self.hospital_clinic_input.toPlainText()),
+            'sample_collection_date': sanitize_single_line(self.sample_collection_date_input.text()),
+            'specimen': sanitize_single_line(self.specimen_input.toPlainText()),
+            'sample_receipt_date': sanitize_single_line(self.sample_receipt_date_input.text()),
+            'biopsy_performed_by': sanitize_single_line(self.biopsy_performed_by_input.toPlainText()),
+            'report_date': sanitize_single_line(self.report_date_input.text()),
+            'indication': sanitize_multi_line(self.indication_input.toPlainText()),
+            'results_summary_comment': sanitize_multi_line(self.results_summary_comment.toPlainText()) if hasattr(self, 'results_summary_comment') else ''
         }
         
         # Gather Embryo Data - Correctly iterating through all forms
@@ -1816,27 +1824,32 @@ class PGTAReportGeneratorApp(QMainWindow):
         
     def get_manual_data_dict(self):
         """Collect current manual entry data into a dictionary with 'nan' sanitation"""
-        def clean(val):
+        def clean_single_line(val):
             if val is None: return ""
-            s = str(val).strip(' \t\r\f\v') # Preserves newlines (\n)
+            s = str(val).strip(' \t\r\f\v\n')
+            return "" if s.lower() == "nan" else " ".join(s.splitlines())
+            
+        def clean_multi_line(val):
+            if val is None: return ""
+            s = str(val).strip(' \t\r\f\v\n') # Preserves internal newlines
             return "" if s.lower() == "nan" else s
 
         patient_info = {
-            'patient_name': clean(self.patient_name_input.toPlainText()),
-            'spouse_name': clean(self.spouse_name_input.toPlainText()),
-            'pin': clean(self.pin_input.toPlainText()),
-            'age': clean(self.age_input.toPlainText()),
-            'sample_number': clean(self.sample_number_input.toPlainText()),
-            'referring_clinician': clean(self.referring_clinician_input.toPlainText()),
-            'biopsy_date': clean(self.biopsy_date_input.text()),
-            'hospital_clinic': clean(self.hospital_clinic_input.toPlainText()),
-            'sample_collection_date': clean(self.sample_collection_date_input.text()),
-            'specimen': clean(self.specimen_input.toPlainText()),
-            'sample_receipt_date': clean(self.sample_receipt_date_input.text()),
-            'biopsy_performed_by': clean(self.biopsy_performed_by_input.toPlainText()),
-            'report_date': clean(self.report_date_input.text()),
-            'indication': clean(self.indication_input.toPlainText()),
-            'results_summary_comment': clean(self.results_summary_comment.toPlainText()) if hasattr(self, 'results_summary_comment') else ''
+            'patient_name': clean_single_line(self.patient_name_input.toPlainText()),
+            'spouse_name': clean_single_line(self.spouse_name_input.toPlainText()),
+            'pin': clean_single_line(self.pin_input.toPlainText()),
+            'age': clean_single_line(self.age_input.toPlainText()),
+            'sample_number': clean_single_line(self.sample_number_input.toPlainText()),
+            'referring_clinician': clean_single_line(self.referring_clinician_input.toPlainText()),
+            'biopsy_date': clean_single_line(self.biopsy_date_input.text()),
+            'hospital_clinic': clean_single_line(self.hospital_clinic_input.toPlainText()),
+            'sample_collection_date': clean_single_line(self.sample_collection_date_input.text()),
+            'specimen': clean_single_line(self.specimen_input.toPlainText()),
+            'sample_receipt_date': clean_single_line(self.sample_receipt_date_input.text()),
+            'biopsy_performed_by': clean_single_line(self.biopsy_performed_by_input.toPlainText()),
+            'report_date': clean_single_line(self.report_date_input.text()),
+            'indication': clean_multi_line(self.indication_input.toPlainText()),
+            'results_summary_comment': clean_multi_line(self.results_summary_comment.toPlainText()) if hasattr(self, 'results_summary_comment') else ''
         }
         
         embryos = []
