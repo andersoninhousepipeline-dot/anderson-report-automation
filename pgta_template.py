@@ -344,8 +344,23 @@ class PGTAReportTemplate:
         # Methodolgy content (Flows after cover, includes CondPageBreak for References)
         story.extend(self._build_methodology_page())
         
-        # Strict page break before embryo results as requested
-        story.append(PageBreak())
+        # Check if ALL embryos are "Low DNA concentration"
+        # If all are Low DNA, we skip all individual pages and add signature to Page 2
+        all_low_dna = True if embryos_data else False
+        for embryo in embryos_data:
+            interp = str(embryo.get('interpretation', '')).upper()
+            res = str(embryo.get('result_summary', '')).upper()
+            if "LOW DNA" not in interp and "LOW DNA" not in res:
+                all_low_dna = False
+                break
+
+        if all_low_dna:
+            # For all Low DNA embryos, append signature directly after Methodology/References
+            story.append(Spacer(1, 24))
+            story.append(self._create_signature_table())
+        else:
+            # Strict page break before embryo results as requested
+            story.append(PageBreak())
         
         # Pages 3+: Individual embryo results
         for idx, embryo in enumerate(embryos_data):
@@ -874,9 +889,10 @@ class PGTAReportTemplate:
         autosomes = str(embryo_data.get('autosomes', '')).upper()
         sex_chrs = str(embryo_data.get('sex_chromosomes', '')).upper()
         
-        # Check for actual mosaic percentage values (not empty, not dash, must be numeric)
+        # Check for actual mosaic percentage values (not empty, not dash, must contain a digit)
+        import re as re_mos
         has_mosaic = any(
-            v and str(v).strip() and str(v).strip() != '-' and str(v).strip().replace('.', '').isdigit()
+            v and str(v).strip() and str(v).strip() != '-' and re_mos.search(r'\d', str(v))
             for v in mosaic_percentages.values()
         )
         

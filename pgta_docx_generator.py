@@ -515,9 +515,9 @@ class PGTADocxGenerator:
             autosomes = str(embryo_data.get('autosomes', '')).upper()
             sex_chrs = str(embryo_data.get('sex_chromosomes', '')).upper()
             
-            # Check for actual mosaic percentage values (not empty, not dash, must be numeric)
+            import re as re_mos
             has_mosaic = any(
-                v and str(v).strip() and str(v).strip() != '-' and str(v).strip().replace('.', '').isdigit()
+                v and str(v).strip() and str(v).strip() != '-' and re_mos.search(r'\d', str(v))
                 for v in mosaic_map.values()
             )
             
@@ -640,9 +640,9 @@ class PGTADocxGenerator:
                     return "#0000FF"
                     
         # Explicit checks for the new combinations
-        if "SL/SG" in s or "SG/SL" in s or "MULTIPLE CHROMOSOMAL ABNORMALITIES" in s:
+        if any(x in s for x in ["SL/SG", "SG/SL", "MULTIPLE CHROMOSOMAL ABNORMALITIES"]):
             return "#FF0000"
-        if "SML/SMG" in s or "SMG/SML" in s:
+        if any(x in s for x in ["SML/SMG", "SMG/SML"]):
             return "#0000FF"
             
         return "#000000"

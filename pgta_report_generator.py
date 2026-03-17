@@ -159,7 +159,9 @@ class ReportGeneratorWorker(QThread):
                 patient_name = patient_data['patient_info'].get('patient_name', 'Unknown')
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 logo_suffix = "_withlogo" if self.show_logo else "_withoutlogo"
-                base_filename = f"{sample_num}_{patient_name.replace(' ', '_')}_{timestamp}{logo_suffix}"
+                # Sanitize patient name for filename
+                clean_name = re.sub(r'[^a-zA-Z0-9_\-\(\)]', '_', patient_name)
+                base_filename = f"{sample_num}_{clean_name}_{timestamp}{logo_suffix}"
                 
                 self.progress.emit(
                     int((idx - 1) / total * 100),
@@ -1010,7 +1012,7 @@ class PGTAReportGeneratorApp(QMainWindow):
             
             # Status Combo
             chr_combo = ClickOnlyComboBox()
-            chr_combo.addItems(["N", "G", "L", "SG", "SL", "M", "MG", "ML", "SMG", "SML"])
+            chr_combo.addItems(["N", "G", "L", "SG", "SL", "M", "MG", "ML", "SMG", "SML", "SL/SG", "SG/SL", "SML/SMG", "SMG/SML"])
             chr_combo.currentTextChanged.connect(self.update_preview)
             chr_grid.addWidget(chr_combo, row, col_base + 1)
             
@@ -1469,7 +1471,8 @@ class PGTAReportGeneratorApp(QMainWindow):
                 <div class="card">
                     <h3>5. Color Coding System</h3>
                     <ul class="feature-list">
-                        <li><span class="icon" style="background:#FF0000;color:white;">R</span> <b>Red:</b> Non-mosaic abnormalities - del/dup without %, CNV status L/G/SL/SG</li>
+                        <li><span class="icon" style="background:#FF0000;color:white;">R</span> <b>Red:</b> Non-mosaic abnormalities - del/dup without %, CNV status L/G/SL/SG/SL/SG/SG/SL</li>
+                        <li><span class="icon" style="background:#0000FF;color:white;">B</span> <b>Blue:</b> Mosaic abnormalities - del/dup/mos with %, CNV status M/ML/MG/SML/SMG/SML/SMG/SMG/SML</li>
                         <li><span class="icon" style="background:#0000FF;color:white;">B</span> <b>Blue:</b> Mosaic abnormalities - any result containing % (e.g., +15(~30%), dup with ~32%)</li>
                         <li><span class="icon" style="background:#000000;color:white;">N</span> <b>Black:</b> Normal/Euploid results</li>
                     </ul>
@@ -5128,6 +5131,9 @@ Use null for fields not found. Return ONLY valid JSON."""
                             s = s[len(prefix):].strip()
                             break  # Only remove first prefix
                     
+                    # Remove anything in parentheses (like UHID)
+                    s = re.sub(r'\([^)]*\)', '', s)
+                    
                     # Remove all non-alphanumeric characters
                     s = re.sub(r'[^A-Z0-9]', '', s)
                     
@@ -5146,9 +5152,23 @@ Use null for fields not found. Return ONLY valid JSON."""
                     
                     return s
 
+                def get_first_name_token(full_name):
+                    """Extract the first meaningful name token for fuzzy matching.
+                    E.g. 'PALLAVI A B' -> 'PALLAVI'
+                    """
+                    if not full_name: return ""
+                    s = str(full_name).upper().strip()
+                    for pfx in ['MRS.', 'MR.', 'SMT.', 'DR.', 'MS.', 'MISS.', 'PROF.']:
+                        if s.startswith(pfx):
+                            s = s[len(pfx):].strip()
+                            break
+                    s = re.sub(r'\([^)]*\)', '', s)
+                    first = s.split()[0] if s.split() else s
+                    return re.sub(r'[^A-Z0-9]', '', first)
 
                 norm_p_name = normalize_str(p_name)
                 norm_sample_id = normalize_str(p_row.get('Sample ID', ''))
+                first_name_token = get_first_name_token(p_name)
                 
                 embryos = []
                 
@@ -5165,10 +5185,12 @@ Use null for fields not found. Return ONLY valid JSON."""
                     
                     norm_s_name = normalize_str(sample_orig)
                     
+                    # Extract the base part of sample name before first hyphen
+                    sample_base_part = sample_orig.split('_')[0]
+                    sample_first_token = sample_base_part.split('-')[0].upper().strip()
+                    sample_first_token = re.sub(r'[^A-Z0-9]', '', sample_first_token)
+                    
                     # Enhanced Matching Logic with duplicate prevention:
-                    # Priority 1: Sample ID (Anderson ID) - most specific
-                    # Priority 2: Patient Name - fallback for flexibility
-                    # Duplicate tracking prevents same embryo assigned to multiple patients
                     
                     match_type = None
                     
@@ -5178,6 +5200,9 @@ Use null for fields not found. Return ONLY valid JSON."""
                     # Fallback to patient name matching
                     elif norm_p_name and norm_s_name.startswith(norm_p_name):
                         match_type = 'patient_name'
+                    # First-name-token match: "PALLAVI" == "PALLAVI"
+                    elif first_name_token and len(first_name_token) >= 4 and sample_first_token == first_name_token:
+                        match_type = 'first_name_token'
                     
                     if match_type:
                         # Mark as matched
@@ -5195,13 +5220,12 @@ Use null for fields not found. Return ONLY valid JSON."""
                         conclusion_upper = conclusion.upper()
                         result_summary_val = "Normal chromosome complement"  # Default
                         interp = "NA"  # Default interpretation
-                        
-                        # Handle QC failures first
-                        if qc_status == 'FAIL' or 'INCONCLUSIVE' in result_col.upper() or 'RESEQUENCING' in result_col.upper():
-                            result_summary_val = "Inconclusive"
-                            interp = "NA"
-                        elif 'LOW' in result_col.upper() and ('DNA' in result_col.upper() or 'READS' in result_col.upper()):
+                        # Handle QC failures and special cases
+                        if 'LOW' in result_col.upper() and ('DNA' in result_col.upper() or 'READS' in result_col.upper()):
                             result_summary_val = "Low DNA concentration"
+                            interp = "NA"
+                        elif qc_status == 'FAIL' or 'INCONCLUSIVE' in result_col.upper() or 'RESEQUENCING' in result_col.upper():
+                            result_summary_val = "Inconclusive"
                             interp = "NA"
                         elif "CHAOTIC" in conclusion_upper or "CHAOTIC" in result_col.upper():
                             result_summary_val = "Multiple chromosomal abnormalities"
@@ -5683,7 +5707,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                 # Status Combo
                 chr_combo = ClickOnlyComboBox()
                 chr_combo.setEditable(True) # Manual Entry Enabled
-                chr_combo.addItems(["N", "G", "L", "SG", "SL", "M", "MG", "ML", "SMG", "SML", "NA"])
+                chr_combo.addItems(["N", "G", "L", "SG", "SL", "M", "MG", "ML", "SMG", "SML", "SL/SG", "SG/SL", "SML/SMG", "SMG/SML", "NA"])
                 chr_combo.setCurrentText(chr_statuses.get(s_j, 'N'))
                 chr_combo.currentTextChanged.connect(self.update_batch_preview)
                 chr_grid.addWidget(chr_combo, row, col_base + 1)
@@ -5836,7 +5860,8 @@ Use null for fields not found. Return ONLY valid JSON."""
 
         data = self.bulk_patient_data_list[idx]
     
-        p_name = data['patient_info']['patient_name'].replace(' ', '_')
+        # Sanitize for filename
+        p_name = re.sub(r'[^a-zA-Z0-9_\-\(\)]', '_', data['patient_info']['patient_name'])
         default_name = f"{p_name}_draft.json"
     
         path, _ = QFileDialog.getSaveFileName(self, "Save Patient Draft", default_name, "JSON Files (*.json)")
@@ -6055,7 +6080,8 @@ Use null for fields not found. Return ONLY valid JSON."""
             template = PGTAReportTemplate(assets_dir="assets/pgta")
             show_logo = self.bulk_logo_combo.currentText() == "With Logo"
             logo_suffix = "_withlogo" if show_logo else "_withoutlogo"
-            p_name = data['patient_info']['patient_name'].replace(' ', '_')
+            # Sanitize for filename
+            p_name = re.sub(r'[^a-zA-Z0-9_\-\(\)]', '_', data['patient_info']['patient_name'])
             
             # Generate both PDF and DOCX if requested in settings
             if self.generate_pdf_check.isChecked():
