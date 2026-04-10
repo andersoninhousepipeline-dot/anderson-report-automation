@@ -542,9 +542,16 @@ class PGTADocxGenerator:
             for i in range(1, 23):
                 cell = cnv_table.rows[1].cells[i]
                 stat = str(chr_statuses.get(str(i), 'N'))
-                cell.text = stat
                 color = self._get_status_color_docx(stat)
-                self._set_paragraph_font(cell.paragraphs[0], font_size=8, bold=True, color=color)
+                p = cell.paragraphs[0]
+                if '/' in stat:
+                    parts = stat.split('/', 1)
+                    run1 = p.add_run(parts[0] + '/')
+                    run1.add_break()          # <w:br/> forces wrap after slash
+                    p.add_run(parts[1])
+                else:
+                    cell.text = stat
+                self._set_paragraph_font(p, font_size=8, bold=True, color=color)
                 
             # Mosaic Row
             if has_mosaic:
