@@ -527,16 +527,17 @@ class PGTADocxGenerator:
             if is_autosomes_normal and is_sex_mosaic:
                 has_mosaic = False
                 
+            cnv_fs = 7  # single value controls both Chromosome and CNV status rows
             num_rows = 3 if has_mosaic else 2
             cnv_table = doc.add_table(rows=num_rows, cols=23)
             self._apply_grid_to_table(cnv_table)
             self._set_table_fixed_layout(cnv_table)
             self._set_column_widths(cnv_table, [75] + [19.13]*22)
-            
+
             # Header Row
             cnv_table.rows[0].cells[0].text = "Chromosome"
             for i in range(1, 23): cnv_table.rows[0].cells[i].text = str(i)
-            
+
             # Status Row
             cnv_table.rows[1].cells[0].text = "CNV status"
             for i in range(1, 23):
@@ -551,7 +552,7 @@ class PGTADocxGenerator:
                     p.add_run(parts[1])
                 else:
                     cell.text = stat
-                self._set_paragraph_font(p, font_size=7, bold=True, color=color)
+                self._set_paragraph_font(p, font_size=cnv_fs, bold=True, color=color)
 
             # Mosaic Row
             if has_mosaic:
@@ -565,7 +566,7 @@ class PGTADocxGenerator:
                     p = cell.paragraphs[0]
                     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     if c_idx == 0: p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    self._set_paragraph_font(p, font_size=7, bold=True)
+                    self._set_paragraph_font(p, font_size=cnv_fs, bold=True)
 
         doc.add_paragraph()
         self._add_signature_section(doc)

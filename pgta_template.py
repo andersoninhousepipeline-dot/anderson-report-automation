@@ -903,33 +903,34 @@ class PGTAReportTemplate:
         if is_autosomes_normal and is_sex_mosaic:
             has_mosaic = False
             
+        cnv_fs = 7  # single value controls both Chromosome and CNV status rows
         if has_mosaic:
-            header = [self._wrap_text('Chromosome', bold=True, align='CENTER', font_size=7)] + [self._wrap_text(str(i), bold=True, align='CENTER', font_size=7) for i in range(1, 23)]
-            cnv_row = [self._wrap_text('CNV status', bold=True, align='CENTER', font_size=7)]
+            header = [self._wrap_text('Chromosome', bold=True, align='CENTER', font_size=cnv_fs)] + [self._wrap_text(str(i), bold=True, align='CENTER', font_size=cnv_fs) for i in range(1, 23)]
+            cnv_row = [self._wrap_text('CNV status', bold=True, align='CENTER', font_size=cnv_fs)]
             mosaic_row = [self._wrap_text('Mosaic (%)', bold=True, align='CENTER', font_size=9)]
-            
+
             for i in range(1, 23):
                 status = chr_statuses.get(str(i), 'N')
                 perc = mosaic_percentages.get(str(i), '-')
                 s_color = self._get_status_color(status)
-                
+
                 display_status = status.replace('/', '/<br/>')  # force wrap at slash boundary
-                cnv_row.append(self._wrap_text(self._wrap_colored(display_status, s_color, bold=True), bold=True, font_size=7, align='CENTER'))
+                cnv_row.append(self._wrap_text(self._wrap_colored(display_status, s_color, bold=True), bold=True, font_size=cnv_fs, align='CENTER'))
                 mosaic_row.append(self._wrap_text(self._wrap_colored(str(perc), s_color, bold=True), bold=True, font_size=9, align='CENTER'))
-            
+
             data = [header, cnv_row, mosaic_row]
-            # Final optimized width: "Chromosome" widened to 75pt to ensure NO wrap. 
+            # Final optimized width: "Chromosome" widened to 75pt to ensure NO wrap.
             # Remaining width (496 - 75 = 421) / 22 columns = ~19.13pt per data column
             col_widths = [75] + [19.13] * 22
         else:
-            header = [self._wrap_text('Chromosome', bold=True, align='CENTER', font_size=7)] + [self._wrap_text(str(i), bold=True, align='CENTER', font_size=7) for i in range(1, 23)]
-            cnv_row = [self._wrap_text('CNV status', bold=True, align='CENTER', font_size=7)]
+            header = [self._wrap_text('Chromosome', bold=True, align='CENTER', font_size=cnv_fs)] + [self._wrap_text(str(i), bold=True, align='CENTER', font_size=cnv_fs) for i in range(1, 23)]
+            cnv_row = [self._wrap_text('CNV status', bold=True, align='CENTER', font_size=cnv_fs)]
             for i in range(1, 23):
                 status = chr_statuses.get(str(i), 'N')
                 s_color = self._get_status_color(status)
-                
+
                 display_status = status.replace('/', '/<br/>')  # force wrap at slash boundary
-                cnv_row.append(self._wrap_text(self._wrap_colored(display_status, s_color, bold=True), bold=True, font_size=7, align='CENTER'))
+                cnv_row.append(self._wrap_text(self._wrap_colored(display_status, s_color, bold=True), bold=True, font_size=cnv_fs, align='CENTER'))
                 
             data = [header, cnv_row]
             col_widths = [75] + [19.13] * 22
