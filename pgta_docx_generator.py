@@ -551,21 +551,22 @@ class PGTADocxGenerator:
                     p.add_run(parts[1])
                 else:
                     cell.text = stat
-                self._set_paragraph_font(p, font_size=8, bold=True, color=color)
-                
+                self._set_paragraph_font(p, font_size=7, bold=True, color=color)
+
             # Mosaic Row
             if has_mosaic:
                 cnv_table.rows[2].cells[0].text = "Mosaic (%)"
                 for i in range(1, 23):
                     cnv_table.rows[2].cells[i].text = str(mosaic_map.get(str(i), '-'))
 
-            for row in cnv_table.rows:
+            for r_idx, row in enumerate(cnv_table.rows):
                 for c_idx, cell in enumerate(row.cells):
                     self._set_cell_background(cell, "F1F1F7")
                     p = cell.paragraphs[0]
                     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     if c_idx == 0: p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    self._set_paragraph_font(p, font_size=8, bold=True)
+                    fsize = 7 if r_idx == 1 else 8  # CNV status row: uniform 7pt
+                    self._set_paragraph_font(p, font_size=fsize, bold=True)
 
         doc.add_paragraph()
         self._add_signature_section(doc)

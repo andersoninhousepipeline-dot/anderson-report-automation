@@ -914,10 +914,8 @@ class PGTAReportTemplate:
                 perc = mosaic_percentages.get(str(i), '-')
                 s_color = self._get_status_color(status)
                 
-                # Dynamic font sizing for balancing visibility (Normal: 9pt, SMG/SML: 8pt)
-                f_size = 8 if len(status) > 2 else 9
                 display_status = status.replace('/', '/<br/>')  # force wrap at slash boundary
-                cnv_row.append(self._wrap_text(self._wrap_colored(display_status, s_color, bold=True), bold=True, font_size=f_size, align='CENTER'))
+                cnv_row.append(self._wrap_text(self._wrap_colored(display_status, s_color, bold=True), bold=True, font_size=7, align='CENTER'))
                 mosaic_row.append(self._wrap_text(self._wrap_colored(str(perc), s_color, bold=True), bold=True, font_size=9, align='CENTER'))
             
             data = [header, cnv_row, mosaic_row]
@@ -931,10 +929,8 @@ class PGTAReportTemplate:
                 status = chr_statuses.get(str(i), 'N')
                 s_color = self._get_status_color(status)
                 
-                # Dynamic font sizing for balancing visibility (Normal: 9pt, SMG/SML: 8pt)
-                f_size = 8 if len(status) > 2 else 9
                 display_status = status.replace('/', '/<br/>')  # force wrap at slash boundary
-                cnv_row.append(self._wrap_text(self._wrap_colored(display_status, s_color, bold=True), bold=True, font_size=f_size, align='CENTER'))
+                cnv_row.append(self._wrap_text(self._wrap_colored(display_status, s_color, bold=True), bold=True, font_size=7, align='CENTER'))
                 
             data = [header, cnv_row]
             col_widths = [75] + [19.13] * 22
