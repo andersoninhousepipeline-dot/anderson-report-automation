@@ -907,7 +907,7 @@ class PGTAReportTemplate:
         if has_mosaic:
             header = [self._wrap_text('Chromosome', bold=True, align='CENTER', font_size=cnv_fs)] + [self._wrap_text(str(i), bold=True, align='CENTER', font_size=cnv_fs) for i in range(1, 23)]
             cnv_row = [self._wrap_text('CNV status', bold=True, align='CENTER', font_size=cnv_fs)]
-            mosaic_row = [self._wrap_text('Mosaic (%)', bold=True, align='CENTER', font_size=9)]
+            mosaic_row = [self._wrap_text('Mosaic (%)', bold=True, align='CENTER', font_size=cnv_fs)]
 
             for i in range(1, 23):
                 status = chr_statuses.get(str(i), 'N')
@@ -916,7 +916,7 @@ class PGTAReportTemplate:
 
                 display_status = status.replace('/', '/<br/>')  # force wrap at slash boundary
                 cnv_row.append(self._wrap_text(self._wrap_colored(display_status, s_color, bold=True), bold=True, font_size=cnv_fs, align='CENTER'))
-                mosaic_row.append(self._wrap_text(self._wrap_colored(str(perc), s_color, bold=True), bold=True, font_size=9, align='CENTER'))
+                mosaic_row.append(self._wrap_text(self._wrap_colored(str(perc), s_color, bold=True), bold=True, font_size=cnv_fs, align='CENTER'))
 
             data = [header, cnv_row, mosaic_row]
             # Final optimized width: "Chromosome" widened to 75pt to ensure NO wrap.
