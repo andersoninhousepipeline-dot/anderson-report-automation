@@ -904,9 +904,8 @@ class PGTAReportTemplate:
             has_mosaic = False
             
         if has_mosaic:
-            # Header set to 9pt
-            header = [self._wrap_text('Chromosome', bold=True, align='CENTER', font_size=9)] + [self._wrap_text(str(i), bold=True, align='CENTER', font_size=9) for i in range(1, 23)]
-            cnv_row = [self._wrap_text('CNV status', bold=True, align='CENTER', font_size=9)]
+            header = [self._wrap_text('Chromosome', bold=True, align='CENTER', font_size=7)] + [self._wrap_text(str(i), bold=True, align='CENTER', font_size=7) for i in range(1, 23)]
+            cnv_row = [self._wrap_text('CNV status', bold=True, align='CENTER', font_size=7)]
             mosaic_row = [self._wrap_text('Mosaic (%)', bold=True, align='CENTER', font_size=9)]
             
             for i in range(1, 23):
@@ -923,8 +922,8 @@ class PGTAReportTemplate:
             # Remaining width (496 - 75 = 421) / 22 columns = ~19.13pt per data column
             col_widths = [75] + [19.13] * 22
         else:
-            header = [self._wrap_text('Chromosome', bold=True, align='CENTER', font_size=9)] + [self._wrap_text(str(i), bold=True, align='CENTER', font_size=9) for i in range(1, 23)]
-            cnv_row = [self._wrap_text('CNV status', bold=True, align='CENTER', font_size=9)]
+            header = [self._wrap_text('Chromosome', bold=True, align='CENTER', font_size=7)] + [self._wrap_text(str(i), bold=True, align='CENTER', font_size=7) for i in range(1, 23)]
+            cnv_row = [self._wrap_text('CNV status', bold=True, align='CENTER', font_size=7)]
             for i in range(1, 23):
                 status = chr_statuses.get(str(i), 'N')
                 s_color = self._get_status_color(status)
