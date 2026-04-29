@@ -5097,17 +5097,29 @@ Use null for fields not found. Return ONLY valid JSON."""
 
                 b_date_raw = get_clean_value(p_row, ['Date of Biopsy', 'Biopsy Date'])
                 r_date_raw = get_clean_value(p_row, ['Date Sample Received', 'Receipt Date'])
-                
+
                 b_date = format_date(b_date_raw)
                 r_date = format_date(r_date_raw)
                 rep_date = datetime.now().strftime("%d-%m-%Y")
-                
+
+                def strip_decimal(val):
+                    """'632504349.0' → '632504349'; non-numeric strings unchanged"""
+                    if not val:
+                        return val
+                    try:
+                        f = float(val)
+                        if f == int(f):
+                            return str(int(f))
+                    except (ValueError, TypeError, OverflowError):
+                        pass
+                    return val
+
                 patient_info = {
                     'patient_name': p_name,
                     'spouse_name': get_clean_value(p_row, ['Spouse Name', 'Husband Name', 'Partner Name']) or 'w/o',
                     'pin': get_clean_value(p_row, ['Sample ID', 'PIN', 'Patient ID']),
                     'age': get_clean_value(p_row, ['Age', 'Patient Age']),
-                    'sample_number': get_clean_value(p_row, ['Sample Number', 'Sample No', 'Sample No.', 'SampleNumber', 'Sample_Number', 'Lab Number', 'Lab No', 'Accession No', 'Accession Number']),
+                    'sample_number': strip_decimal(get_clean_value(p_row, ['Sample Number', 'Sample No', 'Sample No.', 'SampleNumber', 'Sample_Number', 'Lab Number', 'Lab No', 'Accession No', 'Accession Number'])),
                     'referring_clinician': '',  # Not extracted from Excel - user must fill manually
                     'biopsy_date': b_date,
                     'hospital_clinic': get_clean_value(p_row, ['Hospital/Clinic Name', 'Hospital/Clinic', 'Hospital_Clinic', 'Hospital', 'Clinic', 'Center']),
@@ -6209,6 +6221,18 @@ Use null for fields not found. Return ONLY valid JSON."""
                     return default
                 return str(val).strip()
 
+            def strip_decimal(val):
+                """'632504349.0' → '632504349'; non-numeric strings unchanged"""
+                if not val:
+                    return val
+                try:
+                    f = float(val)
+                    if f == int(f):
+                        return str(int(f))
+                except (ValueError, TypeError, OverflowError):
+                    pass
+                return val
+
             # Load file forcing ALL as string to preserve leading zeros
             if file_path.endswith(('.xlsx', '.xls')):
                 df = pd.read_excel(file_path, dtype=str)
@@ -6239,7 +6263,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                     'spouse_name': clean_val(first_row.get(get_col_name(df, ['Spouse_Name', 'Spouse Name']))),
                     'pin': clean_val(first_row.get(get_col_name(df, ['PIN']))),
                     'age': clean_val(first_row.get(get_col_name(df, ['Age', 'Patient Age', 'Patient_Age', 'Age (Years)', 'AGE']))),
-                    'sample_number': clean_val(sample_num),
+                    'sample_number': strip_decimal(clean_val(sample_num)),
                     'referring_clinician': clean_val(first_row.get(get_col_name(df, ['Referring_Clinician', 'Referring Clinician', 'Clinician']))),
                     'biopsy_date': clean_val(first_row.get(get_col_name(df, ['Biopsy_Date', 'Biopsy Date']))),
                     'hospital_clinic': clean_val(first_row.get(get_col_name(df, ['Center name', 'Center', 'Hospital_Clinic', 'Hospital/Clinic', 'Hospital']))),
