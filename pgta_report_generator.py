@@ -5107,7 +5107,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                     'spouse_name': get_clean_value(p_row, ['Spouse Name', 'Husband Name', 'Partner Name']) or 'w/o',
                     'pin': get_clean_value(p_row, ['Sample ID', 'PIN', 'Patient ID']),
                     'age': get_clean_value(p_row, ['Age', 'Patient Age']),
-                    'sample_number': '',  # Not extracted from Excel - user must fill manually
+                    'sample_number': get_clean_value(p_row, ['Sample Number', 'Sample No', 'Sample No.', 'SampleNumber', 'Sample_Number', 'Lab Number', 'Lab No', 'Accession No', 'Accession Number']),
                     'referring_clinician': '',  # Not extracted from Excel - user must fill manually
                     'biopsy_date': b_date,
                     'hospital_clinic': get_clean_value(p_row, ['Hospital/Clinic Name', 'Hospital/Clinic', 'Hospital_Clinic', 'Hospital', 'Clinic', 'Center']),
