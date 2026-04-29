@@ -483,6 +483,18 @@ class PGTAReportTemplate:
         s = str(val).strip()
         if s.lower() == "nan": return default
         return s
+
+    def _fmt_age(self, val):
+        """Format age: '37.0' → '37 Years', '37' → '37 Years', '37 Years' unchanged"""
+        import re as _re
+        s = self._clean(val)
+        if not s:
+            return ""
+        m = _re.match(r'^(\d+)(?:\.0+)?$', s.strip())
+        if m:
+            return f"{m.group(1)} Years"
+        s = _re.sub(r'^(\d+)\.0+(\s)', r'\1\2', s)
+        return s
     
     def _wrap_text(self, text, bold=False, font_size=None, align='LEFT', max_width=None):
         """Wrap text in a Paragraph for table cells, with automatic Line Break support"""
@@ -547,7 +559,7 @@ class PGTAReportTemplate:
         
         data = [
             [self._wrap_text('<b>PATIENT NAME</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{combined_name}</b>", max_width=140), self._wrap_text('<b>PIN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('pin'))}</b>", max_width=144)],
-            [self._wrap_text('<b>DATE OF BIRTH/ AGE</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('age'))}</b>", max_width=140), self._wrap_text('<b>SAMPLE NUMBER</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_number'))}</b>", max_width=144)],
+            [self._wrap_text('<b>DATE OF BIRTH/ AGE</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._fmt_age(patient_data.get('age'))}</b>", max_width=140), self._wrap_text('<b>SAMPLE NUMBER</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_number'))}</b>", max_width=144)],
             [self._wrap_text('<b>REFERRING CLINICIAN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('referring_clinician'))}</b>", max_width=140), self._wrap_text('<b>BIOPSY DATE</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('biopsy_date'))}</b>", max_width=144)],
             [self._wrap_text('<b>HOSPITAL/CLINIC</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('hospital_clinic'))}</b>", max_width=140), self._wrap_text('<b>SAMPLE COLLECTION DATE</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_collection_date'))}</b>", max_width=144)],
             [self._wrap_text('<b>SPECIMEN</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('specimen'))}</b>", max_width=140), self._wrap_text('<b>SAMPLE RECEIPT DATE</b>', True), self._wrap_text(':'), self._wrap_text(f"<b>{self._clean(patient_data.get('sample_receipt_date'))}</b>", max_width=144)],
@@ -765,6 +777,9 @@ class PGTAReportTemplate:
         # Check for "Multiple chromosomal abnormalities" in result_summary first
         if "MULTIPLE CHROMOSOMAL ABNORMALITIES" in result_summary_text.upper():
             auto_color = colors.red
+        # Multiple Mosaic Chromosome complement → blue
+        elif 'MULTIPLE MOSAIC CHROMOSOME COMPLEMENT' in auto_upper:
+            auto_color = colors.blue
         # Check for Normal/Euploid
         elif 'NORMAL' in auto_upper or 'EUPLOID' in auto_upper or not autosomes_text.strip():
             auto_color = colors.black
@@ -781,8 +796,6 @@ class PGTAReportTemplate:
         sex_color = colors.black
         if "ABNORMAL" in sex_text.upper():
             sex_color = colors.red
-        elif "MOSAIC" in sex_text.upper():
-            sex_color = colors.blue
 
         # MTcopy: NA for non-euploid
         mtcopy = self._clean(embryo_data.get('mtcopy'), 'NA')
@@ -804,9 +817,10 @@ class PGTAReportTemplate:
         elements.append(Paragraph(f"<b>EMBRYO: {detail_embryo_id}</b>", embryo_id_style))
         elements.append(Spacer(1, 6))
         
-        # Result row: color driven by result_summary (Multiple chromosomal abnormalities = red)
+        # Result row: blue for Multiple Mosaic Chromosome complement, black otherwise
+        res_color = colors.blue if 'MULTIPLE MOSAIC CHROMOSOME COMPLEMENT' in res_text.upper() else colors.black
         detail_data = [
-            [self._wrap_text(f"<b>Result:</b> {self._wrap_colored(res_text, colors.black, bold=False)}", False)],
+            [self._wrap_text(f"<b>Result:</b> {self._wrap_colored(res_text, res_color, bold=False)}", False)],
             [self._wrap_text(f"<b>Autosomes:</b> {self._wrap_colored(autosomes_text, auto_color, bold=False)}", False)],
             [self._wrap_text(f"<b>Sex Chromosomes:</b> {self._wrap_colored(sex_text, sex_color, bold=False)}", False)],
             [self._wrap_text(f"<b>Interpretation:</b> {self._wrap_colored(interp_text, interp_color, bold=False)}", False)],
@@ -1066,12 +1080,11 @@ class PGTAReportTemplate:
         if any(kw in res_up for kw in red_keywords) or any(kw in int_up for kw in red_keywords):
             return colors.red
             
-        # Blue Logic - Mosaic
-        blue_keywords = ["MOSAIC CHROMOSOME COMPLEMENT", "LOW LEVEL MOSAIC", 
-                         "HIGH LEVEL MOSAIC", "COMPLEX MOSAIC", "MULTIPLE MOSAIC"]
+        # Blue for mosaic results
+        blue_keywords = ["MULTIPLE MOSAIC CHROMOSOME COMPLEMENT", "MOSAIC CHROMOSOME COMPLEMENT", "COMPLEX MOSAIC"]
         if any(kw in res_up for kw in blue_keywords) or any(kw in int_up for kw in blue_keywords):
             return colors.blue
-            
+
         return colors.black
 
     def _get_autosome_color(self, autosome_text):

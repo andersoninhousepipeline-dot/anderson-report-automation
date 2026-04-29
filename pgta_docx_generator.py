@@ -162,6 +162,18 @@ class PGTADocxGenerator:
         if s.lower() == "nan": return default
         return s
 
+    def _fmt_age(self, val):
+        """Format age: '37.0' → '37 Years', '37' → '37 Years', '37 Years' unchanged"""
+        import re as _re
+        s = self._clean(val)
+        if not s:
+            return ""
+        m = _re.match(r'^(\d+)(?:\.0+)?$', s.strip())
+        if m:
+            return f"{m.group(1)} Years"
+        s = _re.sub(r'^(\d+)\.0+(\s)', r'\1\2', s)
+        return s
+
     # --- GENERATION LOGIC ---
 
     def generate_docx(self, output_path, patient_data, embryos_data, show_logo=True, show_grid=False):
@@ -357,9 +369,11 @@ class PGTADocxGenerator:
             if l2: row.cells[3].text = l2; row.cells[4].text = ":"
             
             # Populate cleaned values - first row has combined name directly
-            if v1: 
+            if v1:
                 if r_idx == 0:  # First row - combined name already a string
                     row.cells[2].text = v1
+                elif v1 == "age":
+                    row.cells[2].text = self._fmt_age(data.get(v1))
                 else:
                     row.cells[2].text = self._clean(data.get(v1))
             if v2: row.cells[5].text = self._clean(data.get(v2))
@@ -462,11 +476,13 @@ class PGTADocxGenerator:
         mt = self._clean(embryo_data.get('mtcopy'), 'NA')
         if interp.upper() != "EUPLOID": mt = "NA"
         
+        result_desc_text = self._clean(embryo_data.get('result_description', ''))
         interp_color = self._get_result_color_hex(res, interp)
+        res_row_color = "#0000FF" if 'MULTIPLE MOSAIC CHROMOSOME COMPLEMENT' in result_desc_text.upper() else "#000000"
         details = [
-            ("Result:", res, "#000000"),
+            ("Result:", res, res_row_color),
             ("Autosomes:", auto, self._get_status_color_docx(auto)),
-            ("Sex Chromosomes:", sex, "#0000FF" if "MOSAIC" in sex.upper() else ("#FF0000" if "ABNORMAL" in sex.upper() else "#000000")),
+            ("Sex Chromosomes:", sex, "#FF0000" if "ABNORMAL" in sex.upper() else "#000000"),
             ("Interpretation:", interp, interp_color),
             ("MTcopy:", mt, "#000000")
         ]
@@ -601,7 +617,11 @@ class PGTADocxGenerator:
         if "EUPLOID" in i and "ANEUPLOID" not in i:
             return "#000000"
         if any(k in i for k in ["ANEUPLOID", "ABNORMAL"]): return "#FF0000"
-        if any(k in i for k in ["MOSAIC", "MOSAICISM"]): return "#0000FF"
+        # Blue for mosaic results
+        r = str(res).upper()
+        blue_keywords = ["MULTIPLE MOSAIC CHROMOSOME COMPLEMENT", "MOSAIC CHROMOSOME COMPLEMENT", "COMPLEX MOSAIC"]
+        if any(kw in i for kw in blue_keywords) or any(kw in r for kw in blue_keywords):
+            return "#0000FF"
         return "#000000"
 
     def _get_status_color_docx(self, status):
@@ -616,7 +636,11 @@ class PGTADocxGenerator:
         # Check for Normal/Euploid first
         if 'NORMAL' in s or 'EUPLOID' in s or not original.strip():
             return "#000000"
-        
+
+        # Specific phrase: Multiple Mosaic Chromosome complement → blue
+        if 'MULTIPLE MOSAIC CHROMOSOME COMPLEMENT' in s:
+            return "#0000FF"
+
         # Mosaic = has % sign
         if '%' in original:
             return "#0000FF"

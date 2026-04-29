@@ -912,12 +912,13 @@ class PGTAReportGeneratorApp(QMainWindow):
         embryo_id_input.textChanged.connect(self.update_preview)
         form.addRow("Embryo ID (Page 4):", embryo_id_input)
         
-        # Result Description dropdown (Embryo Result Page) - All black as per spec
+        # Result Description dropdown (Embryo Result Page)
         result_description = ClickOnlyComboBox()
         add_colored_items_to_combo(result_description, [
             ("The embryo contains normal chromosome complement", "black"),
             ("The embryo contains abnormal chromosome complement", "black"),
             ("The embryo contains mosaic chromosome complement", "black"),
+            ("The embryo contains Multiple Mosaic Chromosome complement", "blue"),
             ("Inconclusive", "black")
         ])
         result_description.setEditable(True)
@@ -5065,13 +5066,17 @@ Use null for fields not found. Return ONLY valid JSON."""
                 # Extract patient info
                 def get_clean_value(row, keys, default=''):
                     if isinstance(keys, str): keys = [keys]
+                    # Build case-insensitive index map once
+                    idx_lower = {str(idx_k).strip().lower(): idx_k for idx_k in row.index}
                     for k in keys:
-                        if k in row:
-                            val = row[k]
-                            if pd.isna(val): continue
-                            s_val = str(val).strip(' \t\r\f\v') # Preserves newlines (\n)
-                            if s_val.lower() in ['nan', 'none', 'nat', 'null']: continue
-                            if s_val: return s_val
+                        actual_key = idx_lower.get(k.strip().lower())
+                        if actual_key is None:
+                            continue
+                        val = row[actual_key]
+                        if pd.isna(val): continue
+                        s_val = str(val).strip(' \t\r\f\v')
+                        if s_val.lower() in ['nan', 'none', 'nat', 'null']: continue
+                        if s_val: return s_val
                     return default
 
                 def format_date(d_val):
@@ -5582,12 +5587,13 @@ Use null for fields not found. Return ONLY valid JSON."""
             e_result_summary.setInsertPolicy(ClickOnlyComboBox.InsertPolicy.NoInsert)
             e_result_summary.setCurrentText(embryo['result_summary'])
             
-            # Result Description dropdown - All black as per spec
+            # Result Description dropdown
             e_result_desc = ClickOnlyComboBox()
             add_colored_items_to_combo(e_result_desc, [
                 ("The embryo contains normal chromosome complement", "black"),
                 ("The embryo contains abnormal chromosome complement", "black"),
                 ("The embryo contains mosaic chromosome complement", "black"),
+                ("The embryo contains Multiple Mosaic Chromosome complement", "blue"),
                 ("Inconclusive", "black")
             ])
             e_result_desc.setEditable(True)
@@ -6177,13 +6183,24 @@ Use null for fields not found. Return ONLY valid JSON."""
             return
         
         try:
-            # Helper to find column regardless of case/space
+            # Helper to find column regardless of case/space/underscore order
             def get_col_name(df, possible_names):
-                cols = [c.strip().lower() for c in df.columns]
+                import re as _re
+                def _norm(s):
+                    return _re.sub(r'[\s_]+', ' ', str(s)).strip().lower()
+                col_norms = [(_norm(c), c) for c in df.columns]
+                # Exact normalized match
                 for name in possible_names:
-                    n = name.strip().lower()
-                    if n in cols:
-                        return df.columns[cols.index(n)]
+                    n = _norm(name)
+                    for norm, orig in col_norms:
+                        if n == norm:
+                            return orig
+                # Fallback: column name contains the search term or vice versa
+                for name in possible_names:
+                    n = _norm(name)
+                    for norm, orig in col_norms:
+                        if n in norm or norm in n:
+                            return orig
                 return None
 
             # Helper to clean value (remove nan, strip)
@@ -6221,7 +6238,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                     'patient_name': clean_val(first_row.get(get_col_name(df, ['Patient_Name', 'Patient Name']))),
                     'spouse_name': clean_val(first_row.get(get_col_name(df, ['Spouse_Name', 'Spouse Name']))),
                     'pin': clean_val(first_row.get(get_col_name(df, ['PIN']))),
-                    'age': clean_val(first_row.get(get_col_name(df, ['Age']))),
+                    'age': clean_val(first_row.get(get_col_name(df, ['Age', 'Patient Age', 'Patient_Age', 'Age (Years)', 'AGE']))),
                     'sample_number': clean_val(sample_num),
                     'referring_clinician': clean_val(first_row.get(get_col_name(df, ['Referring_Clinician', 'Referring Clinician', 'Clinician']))),
                     'biopsy_date': clean_val(first_row.get(get_col_name(df, ['Biopsy_Date', 'Biopsy Date']))),
