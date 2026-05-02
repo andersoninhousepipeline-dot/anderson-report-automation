@@ -41,8 +41,8 @@ class PGTAReportTemplate:
     PAGE_HEIGHT = 792  # points
     MARGIN_LEFT = 58  # Reduced from 72 to allow title in single line
     MARGIN_RIGHT = 58
-    MARGIN_TOP = 70
-    MARGIN_BOTTOM = 60
+    MARGIN_TOP = 90
+    MARGIN_BOTTOM = 120
     CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT  # 496 points
     
     # Asset paths
@@ -116,7 +116,7 @@ class PGTAReportTemplate:
         self.SIGNS_IMAGE = os.path.join(self.ASSETS_DIR, "signs.png")
         
         # Verify critical assets
-        for label, path in [("Header", self.HEADER_LOGO), ("Footer", self.FOOTER_BANNER), ("Signs", self.SIGNS_IMAGE)]:
+        for label, path in [("Header", self.HEADER_LOGO), ("Footer", self.FOOTER_BANNER), ("Signs", self.SIGNS_IMAGE), ("GenQA", self.GENQA_LOGO)]:
             if not os.path.exists(path):
                 print(f"CRITICAL: {label} missing at {path}")
             else:
@@ -408,7 +408,8 @@ class PGTAReportTemplate:
         # ALWAYS Draw GenQA Logo (per user request: "without logo genqa must be there")
         if os.path.exists(self.GENQA_LOGO):
              try:
-                 canvas.drawImage(self.GENQA_LOGO, 454, 35, width=67, height=36, preserveAspectRatio=True, mask='auto')
+                 # Moved up to y=66.5 to be visible just above footer banner and leave space for QR code
+                 canvas.drawImage(self.GENQA_LOGO, 454, 66.5, width=67, height=36, preserveAspectRatio=True, mask='auto')
              except:
                  pass
         
@@ -425,7 +426,7 @@ class PGTAReportTemplate:
             title_style
         )
         elements.append(title)
-        elements.append(Spacer(1, 6)) # Fixed reduced spacer
+        elements.append(Spacer(1, 6))
         
         # Patient information table
         patient_table = self._create_patient_info_table(patient_data)
@@ -447,31 +448,28 @@ class PGTAReportTemplate:
             ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
         ] + self._get_grid_style()))
         elements.append(KeepTogether(disclaimer_table))
-        elements.append(Spacer(1, 12))
+        elements.append(Spacer(1, 8)) # Reduced from 12 to pull content up
         
         # Indication
         if 'indication' in patient_data and patient_data['indication']:
+            elements.append(CondPageBreak(75))
             elements.append(self._create_section_header("Indication"))
             elements.append(Spacer(1, 8)) # Gap after header line
-            indication_text = Paragraph(patient_data['indication'], self.styles['PGTABodyText'])
-            elements.append(indication_text)
-            elements.append(Spacer(1, 12))
+            elements.append(Paragraph(patient_data['indication'], self.styles['PGTABodyText']))
+            elements.append(Spacer(1, 8)) # Reduced from 12
         
-        # Results summary header
+        # Results summary
+        elements.append(CondPageBreak(75))
         elements.append(self._create_section_header("Results summary"))
-        elements.append(Spacer(1, 8)) # Gap after header line
-        
-        # Results summary table
-        results_table = self._create_results_summary_table(embryos_data)
-        elements.append(results_table)
-        elements.append(Spacer(1, 8))
+        elements.append(Spacer(1, 6)) # Reduced from 8
+        elements.append(self._create_results_summary_table(embryos_data))
+        elements.append(Spacer(1, 6)) # Reduced from 8
         
         # Results summary comment (optional, appears below table)
         results_summary_comment = self._clean(patient_data.get('results_summary_comment', ''))
         if results_summary_comment:
-            comment_para = Paragraph(results_summary_comment, self.styles['PGTABodyText'])
-            elements.append(comment_para)
-            elements.append(Spacer(1, 8))
+            elements.append(Paragraph(results_summary_comment, self.styles['PGTABodyText']))
+            elements.append(Spacer(1, 6)) # Reduced from 8
         
         elements.append(Spacer(1, 4))
         
@@ -649,26 +647,29 @@ class PGTAReportTemplate:
         """Build methodology and static content page - sections flow continuously"""
         elements = []
         
-        # Methodology section - no KeepTogether, just natural flow
+        # Methodology section
+        elements.append(CondPageBreak(75))
         elements.append(self._create_section_header("Methodology"))
-        elements.append(Spacer(1, 8))
+        elements.append(Spacer(1, 6)) # Reduced from 8 to pull "samples" back
         elements.append(Paragraph(self.METHODOLOGY_TEXT, self.styles['PGTABodyText']))
         elements.append(Spacer(1, 12))
         
-        # Mosaicism section - natural flow
+        # Mosaicism section
+        elements.append(CondPageBreak(75))
         elements.append(self._create_section_header("Conditions for reporting mosaicism"))
         elements.append(Spacer(1, 8))
         elements.append(Paragraph(self.MOSAICISM_TEXT, self.styles['PGTABodyText']))
         elements.append(Spacer(1, 6))
         
-        # Mosaicism bullets
+        # Mosaicism bullets flow naturally
         for bullet in self.MOSAICISM_BULLETS:
             elements.append(Paragraph(f"• {bullet}", self.styles['PGTABulletText']))
         elements.append(Spacer(1, 6))
         elements.append(Paragraph(self.MOSAICISM_CLINICAL, self.styles['PGTABodyText']))
         elements.append(Spacer(1, 12))
         
-        # Limitations section - natural flow
+        # Limitations section
+        elements.append(CondPageBreak(75))
         elements.append(self._create_section_header("Limitations"))
         elements.append(Spacer(1, 8))
         for limitation in self.LIMITATIONS:
@@ -677,7 +678,8 @@ class PGTAReportTemplate:
         elements.append(Spacer(1, 12))
         elements.append(Spacer(1, 12))
         
-        # References section - natural flow
+        # References section
+        elements.append(CondPageBreak(75))
         elements.append(self._create_section_header("References"))
         elements.append(Spacer(1, 8))
         for idx, ref in enumerate(self.REFERENCES, 1):
@@ -841,20 +843,16 @@ class PGTAReportTemplate:
         elements.append(detail_table)
         elements.append(Spacer(1, 12))
         
-        # CNV Chart title - No line for this one
+        # CNV Chart and Header
+        elements.append(CondPageBreak(75))
         elements.append(self._create_section_header("COPY NUMBER CHART", show_line=False))
         elements.append(Spacer(1, 6))
         
-        # CNV Chart Image
         if 'cnv_image_path' in embryo_data and embryo_data['cnv_image_path'] and os.path.exists(embryo_data['cnv_image_path']):
             try:
-                # Add image, keeping aspect ratio but fitting within width
                 img = Image(embryo_data['cnv_image_path'], width=self.CONTENT_WIDTH)
-                
-                # Adjust height proportionally
                 aspect = img.imageWidth / img.imageHeight
                 img.drawHeight = self.CONTENT_WIDTH / aspect
-                
                 img.hAlign = 'CENTER'
                 elements.append(img)
                 elements.append(Spacer(1, 12))
@@ -1063,7 +1061,7 @@ class PGTAReportTemplate:
             ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
             ("ALIGN", (0, 0), (-1, -1), "LEFT"),
         ] + self._get_grid_style()))
-        return KeepTogether(header_table)
+        return header_table
 
     def _get_result_color(self, result_text, interpretation_text):
         """Determine if text should be Red (Aneuploid), Blue (Mosaic) or Black (Euploid)"""
