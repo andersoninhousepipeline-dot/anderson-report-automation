@@ -50,12 +50,29 @@ if %errorlevel% neq 0 (
 REM Dependency Check & Install
 python -c "import PyQt6" >nul 2>&1
 if %errorlevel% neq 0 (
-    echo Installing core packages...
+    echo Installing required packages...
     python -m pip install --upgrade pip
-    python -m pip install PyQt6>=6.6.0 PyQt6-Qt6>=6.6.0 reportlab>=4.0.0 PyPDF2>=3.0.0 pdfplumber>=0.10.0 python-docx>=1.0.0 pandas>=2.0.0 openpyxl>=3.1.0 Pillow>=10.0.0 numpy>=1.24.0 requests>=2.31.0
+    python -m pip install -r requirements.txt
+    if %errorlevel% neq 0 (
+        echo.
+        echo [ERROR] Package installation failed.
+        echo Please check your internet connection and try again.
+        pause
+        exit
+    )
     echo.
-    echo Core packages installed. Starting app...
-    echo EasyOCR will be installed in background later if enabled.
+    echo Packages installed. Verifying PyQt6...
+    python -c "import PyQt6" >nul 2>&1
+    if %errorlevel% neq 0 (
+        echo.
+        echo [ERROR] PyQt6 could not be imported after install.
+        echo Your system may need the Microsoft Visual C++ Redistributable.
+        echo Download from: https://aka.ms/vs/17/release/vc_redist.x64.exe
+        echo.
+        pause
+        exit
+    )
+    echo PyQt6 ready. Starting app...
 )
 
 echo.
