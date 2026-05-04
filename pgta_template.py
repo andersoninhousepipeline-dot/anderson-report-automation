@@ -47,8 +47,8 @@ class NumberedCanvas(canvas.Canvas):
     def _draw_page_number(self, page_num, total_pages):
         self.saveState()
         self.setFont("Helvetica-Bold", 8)
-        self.setFillColorRGB(1, 1, 1)  # white — visible over footer banner
-        self.drawCentredString(306, 25, f"Page {page_num} of {total_pages}")
+        self.setFillColorRGB(0.12, 0.29, 0.49)  # dark blue on white margin above footer logos
+        self.drawCentredString(306, 107, f"Page {page_num} of {total_pages}")
         self.restoreState()
 
 
