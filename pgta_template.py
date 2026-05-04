@@ -25,6 +25,33 @@ from datetime import datetime
 from pgta_assets import HEADER_LOGO_B64, FOOTER_BANNER_B64, SIGN_ANAND_B64, SIGN_SACHIN_B64, SIGN_DIRECTOR_B64
 
 
+class NumberedCanvas(canvas.Canvas):
+    """Canvas that supports 'Page X of Y' numbering by deferring page writes until all pages are known."""
+
+    def __init__(self, *args, **kwargs):
+        canvas.Canvas.__init__(self, *args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        num_pages = len(self._saved_page_states)
+        for page_num, state in enumerate(self._saved_page_states, 1):
+            self.__dict__.update(state)
+            self._draw_page_number(page_num, num_pages)
+            canvas.Canvas.showPage(self)
+        canvas.Canvas.save(self)
+
+    def _draw_page_number(self, page_num, total_pages):
+        self.saveState()
+        self.setFont("Helvetica-Bold", 8)
+        self.setFillColorRGB(1, 1, 1)  # white — visible over footer banner
+        self.drawCentredString(306, 25, f"Page {page_num} of {total_pages}")
+        self.restoreState()
+
+
 class PGTAReportTemplate:
     """Template engine for PGT-A reports"""
     
@@ -377,8 +404,9 @@ class PGTAReportTemplate:
             story.append(PageBreak())
         
         # Build PDF
-        doc.build(story, onFirstPage=self._add_header_footer, 
-                  onLaterPages=self._add_header_footer)
+        doc.build(story, onFirstPage=self._add_header_footer,
+                  onLaterPages=self._add_header_footer,
+                  canvasmaker=NumberedCanvas)
         
         return output_path
     
@@ -919,7 +947,7 @@ class PGTAReportTemplate:
         if has_mosaic:
             header = [self._wrap_text('Chromosome', bold=True, align='CENTER', font_size=cnv_fs)] + [self._wrap_text(str(i), bold=True, align='CENTER', font_size=cnv_fs) for i in range(1, 23)]
             cnv_row = [self._wrap_text('CNV status', bold=True, align='CENTER', font_size=cnv_fs)]
-            mosaic_row = [self._wrap_text('Mosaic (%)', bold=True, align='CENTER', font_size=cnv_fs)]
+            mosaic_row = [self._wrap_text(self._wrap_colored('Mosaic (%)', colors.blue, bold=True), bold=False, align='CENTER', font_size=cnv_fs)]
 
             for i in range(1, 23):
                 status = chr_statuses.get(str(i), 'N')
