@@ -48,7 +48,7 @@ class NumberedCanvas(canvas.Canvas):
         self.saveState()
         self.setFont("Helvetica-Bold", 8)
         self.setFillColorRGB(0.12, 0.29, 0.49)  # dark blue on white margin above footer logos
-        self.drawCentredString(306, 118, f"Page {page_num} of {total_pages}")
+        self.drawCentredString(306, 80, f"Page {page_num} of {total_pages}")
         self.restoreState()
 
 
