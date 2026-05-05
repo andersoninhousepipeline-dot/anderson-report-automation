@@ -427,9 +427,22 @@ class PGTAReportTemplate:
                 return False
 
         if show_logo:
-            # Header and footer span the full content width (MARGIN_LEFT=58, CONTENT_WIDTH=496)
-            draw_b64_img(HEADER_LOGO_B64, self.MARGIN_LEFT, 720, self.CONTENT_WIDTH, 72)
-            draw_b64_img(FOOTER_BANNER_B64, self.MARGIN_LEFT, 0.4, self.CONTENT_WIDTH, 66)
+            # Compute natural height from content width so both images fill exactly
+            # CONTENT_WIDTH=496pt without relying on preserveAspectRatio clipping.
+            def natural_height(b64, target_w):
+                try:
+                    img = PILImage.open(BytesIO(base64.b64decode(b64)))
+                    pw, ph = img.size
+                    return target_w * ph / pw
+                except:
+                    return 72  # safe fallback
+
+            cw = self.CONTENT_WIDTH
+            hdr_h = natural_height(HEADER_LOGO_B64, cw)
+            ftr_h = natural_height(FOOTER_BANNER_B64, cw)
+
+            draw_b64_img(HEADER_LOGO_B64, self.MARGIN_LEFT, 792 - hdr_h, cw, hdr_h)
+            draw_b64_img(FOOTER_BANNER_B64, self.MARGIN_LEFT, 0, cw, ftr_h)
 
         # ALWAYS Draw GenQA Logo — right-aligned to content right edge
         if os.path.exists(self.GENQA_LOGO):
