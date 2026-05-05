@@ -329,9 +329,14 @@ class PGTADocxGenerator:
             
             if is_auto_norm and is_sex_norm:
                 interp = "Euploid"
+            elif not interp or interp.upper() in ("", "NA"):
+                is_sex_abnormal = "ABNORMAL" in sex_val
+                is_auto_abnormal = not is_auto_norm and "MOSAIC" not in auto_val
+                if is_sex_abnormal or is_auto_abnormal:
+                    interp = "Aneuploid"
 
             if interp.upper() != "EUPLOID": mt = "NA"
-            
+
             row.cells[2].text = res_sum
             row.cells[3].text = mt
             row.cells[4].text = interp
@@ -492,6 +497,11 @@ class PGTADocxGenerator:
         
         if is_auto_norm and is_sex_norm:
             interp = "Euploid"
+        elif not interp or interp.upper() in ("", "NA"):
+            is_sex_abnormal = "ABNORMAL" in sex.upper()
+            is_auto_abnormal = not is_auto_norm and "MOSAIC" not in auto.upper()
+            if is_sex_abnormal or is_auto_abnormal:
+                interp = "Aneuploid"
 
         mt = self._clean(embryo_data.get('mtcopy'), 'NA')
         if interp.upper() != "EUPLOID": mt = "NA"
