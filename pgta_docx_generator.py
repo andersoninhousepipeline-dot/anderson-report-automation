@@ -336,8 +336,7 @@ class PGTADocxGenerator:
             row.cells[3].text = mt
             row.cells[4].text = interp
             
-            # Force black color for all results as per latest request
-            interp_color = "#000000"
+            interp_color = self._get_result_color_hex(res_sum, interp)
             
             for c_idx, cell in enumerate(row.cells):
                 self._set_cell_background(cell, "F1F1F7")
@@ -498,13 +497,13 @@ class PGTADocxGenerator:
         if interp.upper() != "EUPLOID": mt = "NA"
         
         result_desc_text = self._clean(embryo_data.get('result_description', ''))
-        # Force black color for all results as per latest request
-        interp_color = "#000000"
+        interp_color = self._get_result_color_hex(res, interp)
+        # Force black color ONLY for the "Result:" description row in details section
         res_row_color = "#000000"
         details = [
             ("Result:", res, res_row_color),
-            ("Autosomes:", auto, "#000000"),
-            ("Sex Chromosomes:", sex, "#000000"),
+            ("Autosomes:", auto, self._get_status_color_docx(auto)),
+            ("Sex Chromosomes:", sex, "#FF0000" if "ABNORMAL" in sex.upper() else "#000000"),
             ("Interpretation:", interp, interp_color),
             ("MTcopy:", mt, "#000000")
         ]

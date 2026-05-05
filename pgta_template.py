@@ -650,8 +650,11 @@ class PGTAReportTemplate:
             if is_auto_norm and is_sex_norm:
                 interp = "Euploid"
 
-            # Force black color for all results as per latest request
-            res_color = colors.black
+            # Application of Red/Blue color logic
+            res_color = self._get_result_color(res_sum, interp)
+            # Mosaic text always blue regardless of other conditions
+            if 'MOSAIC' in res_sum.upper() or 'MOSAIC' in interp.upper():
+                res_color = colors.blue
 
             # MTcopy: NA for non-euploid
             mtcopy = self._clean(embryo.get('mtcopy'), 'NA')
@@ -814,8 +817,9 @@ class PGTAReportTemplate:
         sex_text = self._clean(embryo_data.get('sex_chromosomes', 'Normal'))
         result_summary_text = self._clean(embryo_data.get('result_summary', ''))
         
-        # Force black color for all results as per latest request
-        interp_color = colors.black
+        # Color based on interpretation for interpretation field
+        # Also pass result_summary so "Multiple chromosomal abnormalities" drives red color
+        interp_color = self._get_result_color(result_summary_text, interp_text)
         
         # Force black color for all results as per latest request
         auto_color = colors.black
@@ -835,19 +839,19 @@ class PGTAReportTemplate:
             auto_color = colors.black
         # Mosaic = has % sign
         elif '%' in autosomes_text:
-            auto_color = colors.black
+            auto_color = colors.blue
         # Non-mosaic abnormalities (no % sign)
         elif any(x in auto_upper for x in ['DEL(', 'DUP(', '-', '+', 'STATUS L', 'STATUS G', 'STATUS SL', 'STATUS SG', ' SL', ' SG', ' L,', ' G,', ' L ', ' G ']) or auto_upper.endswith(' L') or auto_upper.endswith(' G'):
-            auto_color = colors.black
+            auto_color = colors.red
         elif 'CNV STATUS' in auto_upper:
-            auto_color = colors.black
+            auto_color = colors.red
 
-        # Sex Chromosome Color: mosaic → black, abnormal → black, else black
+        # Sex Chromosome Color: mosaic → blue, abnormal → red, else black
         sex_color = colors.black
         if 'MOSAIC' in sex_text.upper():
-            sex_color = colors.black
+            sex_color = colors.blue
         elif "ABNORMAL" in sex_text.upper():
-            sex_color = colors.black
+            sex_color = colors.red
 
         # Logic: If both autosomes and sex chromosomes are normal, interpretation is Euploid
         # and MTcopy should be displayed.
@@ -877,11 +881,9 @@ class PGTAReportTemplate:
         elements.append(Paragraph(f"<b>EMBRYO: {detail_embryo_id}</b>", embryo_id_style))
         elements.append(Spacer(1, 6))
         
-        # Force black color for all results as per latest request
+        # Force black color ONLY for the "Result:" description row in details section
         res_color = colors.black
-        auto_color = colors.black
-        sex_color = colors.black
-        interp_color = colors.black
+        # But allow other colors (auto, sex, interp) to maintain their status-based logic
         detail_data = [
             [self._wrap_text(f"<b>Result:</b> {self._wrap_colored(res_text, res_color, bold=False)}", False)],
             [self._wrap_text(f"<b>Autosomes:</b> {self._wrap_colored(autosomes_text, auto_color, bold=False)}", False)],
