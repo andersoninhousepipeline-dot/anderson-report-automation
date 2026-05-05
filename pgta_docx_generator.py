@@ -317,8 +317,18 @@ class PGTADocxGenerator:
             row.cells[1].text = self._clean(emb.get('embryo_id'))
             
             res_sum = self._clean(emb.get('result_summary'))
-            interp = self._clean(emb.get('interpretation'))
             mt = self._clean(emb.get('mtcopy'), 'NA')
+            
+            # Logic: If both autosomes and sex chromosomes are normal, interpretation is Euploid
+            # and MTcopy should be displayed.
+            auto_val = self._clean(emb.get('autosomes')).upper()
+            sex_val = self._clean(emb.get('sex_chromosomes', 'Normal')).upper()
+            is_auto_norm = not auto_val.strip() or "NORMAL" in auto_val or "EUPLOID" in auto_val
+            is_sex_norm = "NORMAL" in sex_val
+            
+            if is_auto_norm and is_sex_norm:
+                interp = "Euploid"
+
             if interp.upper() != "EUPLOID": mt = "NA"
             
             row.cells[2].text = res_sum
@@ -473,6 +483,15 @@ class PGTADocxGenerator:
         interp = self._clean(embryo_data.get('interpretation'))
         auto = self._clean(embryo_data.get('autosomes'))
         sex = self._clean(embryo_data.get('sex_chromosomes'))
+        
+        # Logic: If both autosomes and sex chromosomes are normal, interpretation is Euploid
+        # and MTcopy should be displayed.
+        is_auto_norm = not auto.strip() or "NORMAL" in auto.upper() or "EUPLOID" in auto.upper()
+        is_sex_norm = "NORMAL" in sex.upper()
+        
+        if is_auto_norm and is_sex_norm:
+            interp = "Euploid"
+
         mt = self._clean(embryo_data.get('mtcopy'), 'NA')
         if interp.upper() != "EUPLOID": mt = "NA"
         

@@ -640,6 +640,16 @@ class PGTAReportTemplate:
             res_sum = self._clean(embryo.get('result_summary'))
             interp = self._clean(embryo.get('interpretation'))
             
+            # Logic: If both autosomes and sex chromosomes are normal, interpretation is Euploid
+            # and MTcopy should be displayed.
+            auto_val = self._clean(embryo.get('autosomes')).upper()
+            sex_val = self._clean(embryo.get('sex_chromosomes', 'Normal')).upper()
+            is_auto_norm = not auto_val.strip() or "NORMAL" in auto_val or "EUPLOID" in auto_val
+            is_sex_norm = "NORMAL" in sex_val
+            
+            if is_auto_norm and is_sex_norm:
+                interp = "Euploid"
+
             # Application of Red/Blue color logic
             res_color = self._get_result_color(res_sum, interp)
             # Mosaic text always blue regardless of other conditions
@@ -846,6 +856,14 @@ class PGTAReportTemplate:
             sex_color = colors.blue
         elif "ABNORMAL" in sex_text.upper():
             sex_color = colors.red
+
+        # Logic: If both autosomes and sex chromosomes are normal, interpretation is Euploid
+        # and MTcopy should be displayed.
+        is_auto_norm = not autosomes_text.strip() or "NORMAL" in autosomes_text.upper() or "EUPLOID" in autosomes_text.upper()
+        is_sex_norm = "NORMAL" in sex_text.upper()
+        
+        if is_auto_norm and is_sex_norm:
+            interp_text = "Euploid"
 
         # MTcopy: NA for non-euploid
         mtcopy = self._clean(embryo_data.get('mtcopy'), 'NA')
