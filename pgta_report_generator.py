@@ -5276,6 +5276,46 @@ Use null for fields not found. Return ONLY valid JSON."""
                                 result_summary_val = "Multiple chromosomal abnormalities"  # Could also be single, but safer default
                             interp = "Aneuploid"
                         
+                        # --- Phase 4: Data Extraction (Always needed) ---
+                        autosomes_raw = str(s_row.get('AUTOSOMES', '')).strip()
+                        if not autosomes_raw or autosomes_raw.lower() in ['nan', 'none', 'nat', 'null', '']:
+                            autosomes_val = ""
+                        else:
+                            autosomes_val = autosomes_raw
+
+                        sex_raw = str(s_row.get('SEX', '')).strip()
+                        if not sex_raw or sex_raw.lower() in ['nan', 'none', 'nat', 'null', '']:
+                            sex_chr_val = ""
+                        else:
+                            sex_chr_val = sex_raw
+
+                        # --- Robust Interpretation Check ---
+                        def is_val_abnorm(val):
+                            if not val: return False
+                            v = str(val).upper()
+                            if "ABNORMAL" in v: return True
+                            if any(x in v for x in ["NORMAL", "EUPLOID", "NO COPY NUMBER ABNORMALITY"]):
+                                return False
+                            if "MOSAIC" in v:
+                                return False
+                            if v == "NA": return False
+                            return True
+
+                        if is_val_abnorm(result_summary_val) or is_val_abnorm(autosomes_val) or is_val_abnorm(sex_chr_val):
+                            interp = "Aneuploid"
+                        elif not is_val_abnorm(result_summary_val) and not is_val_abnorm(autosomes_val) and not is_val_abnorm(sex_chr_val):
+                            # Not abnormal. Check if any is mosaic
+                            a_up = str(autosomes_val).upper()
+                            s_up = str(sex_chr_val).upper()
+                            r_up = str(result_summary_val).upper()
+                            if "MOSAIC" not in a_up and "MOSAIC" not in s_up and "MOSAIC" not in r_up:
+                                # Not mosaic either. Check if all are normal/euploid/empty
+                                is_a_n = not a_up or "NORMAL" in a_up or "EUPLOID" in a_up
+                                is_s_n = not s_up or "NORMAL" in s_up or "EUPLOID" in s_up
+                                is_r_n = not r_up or "NORMAL" in r_up or "EUPLOID" in r_up
+                                if is_a_n and is_s_n and is_r_n:
+                                    interp = "Euploid"
+                        
                         # Advanced Parsing for Chromosome Statuses
                         # Example: del(5)(p15.33q12.3)(~64.50Mb,~57%)
                         res_sum = str(s_row.get('Result', ''))
@@ -5394,17 +5434,6 @@ Use null for fields not found. Return ONLY valid JSON."""
                             
                             return ", ".join(parts)
 
-                        # --- Phase 4: Autosomes - STRICTLY from AUTOSOMES column ---
-                        # Get autosomes directly from the AUTOSOMES column in Excel
-                        autosomes_raw = str(s_row.get('AUTOSOMES', '')).strip()
-                        
-                        # Handle nan/empty values - use exactly as provided
-                        if not autosomes_raw or autosomes_raw.lower() in ['nan', 'none', 'nat', 'null', '']:
-                            autosomes_val = ""  # Leave empty if no data
-                        else:
-                            # Use the AUTOSOMES column value exactly as provided
-                            autosomes_val = autosomes_raw
-
                         # --- Phase 4: Result Description Mapping ---
                         # Map result_summary to long description for the PDF body (Embryo Result Page)
                         long_desc = "The embryo contains normal chromosome complement" # Default
@@ -5417,16 +5446,6 @@ Use null for fields not found. Return ONLY valid JSON."""
                         elif result_summary_val == "Normal chromosome complement":
                             long_desc = "The embryo contains normal chromosome complement"
                         
-                        # --- Phase 4: Sex Chromosomes - STRICTLY from SEX column ---
-                        sex_raw = str(s_row.get('SEX', '')).strip()
-                        
-                        # Handle nan/empty values - use exactly as provided
-                        if not sex_raw or sex_raw.lower() in ['nan', 'none', 'nat', 'null', '']:
-                            sex_chr_val = ""  # Leave empty if no data
-                        else:
-                            # Use the SEX column value exactly as provided (e.g., "MOSAIC GAIN (52%)", "Normal", "Abnormal")
-                            sex_chr_val = sex_raw
-
                         # Auto-match CNV image (Restored)
                         cnv_image_path = None
                         sample_base = sample_orig.split('_')[0]
@@ -5566,11 +5585,6 @@ Use null for fields not found. Return ONLY valid JSON."""
         patient_form.addRow("Indication:", self.batch_indication)
         patient_form.addRow("Results Summary Comment:", self.batch_results_summary_comment)
         
-        
-        # TRF Verification Section - REMOVED 2026-02-16
-        # Reason: Causes Windows crashes, see dev_tools/trf_verification_backup/
-        
-
         self.batch_editor_layout.addWidget(patient_group)
     
         # Embryos Section with ALL fields
@@ -5655,12 +5669,35 @@ Use null for fields not found. Return ONLY valid JSON."""
 
             # Auto-update interpretation for batch editor
             def check_batch_interp():
-                if e_autosomes.text().strip().lower() == "normal" and e_sex_chr.currentText().strip().lower() == "normal":
-                    e_interp.setCurrentText("Euploid")
+                auto_val = e_autosomes.text().strip().upper()
+                sex_val = e_sex_chr.currentText().strip().upper()
+                res_val = e_result_summary.currentText().strip().upper()
+                
+                def is_v_abnorm(v):
+                    if not v: return False
+                    if "ABNORMAL" in v: return True
+                    if any(x in v for x in ["NORMAL", "EUPLOID", "NO COPY NUMBER ABNORMALITY"]):
+                        return False
+                    if "MOSAIC" in v:
+                        return False
+                    if v == "NA": return False
+                    return True
+
+                if is_v_abnorm(auto_val) or is_v_abnorm(sex_val) or is_v_abnorm(res_val):
+                    e_interp.setCurrentText("Aneuploid")
+                elif not is_v_abnorm(auto_val) and not is_v_abnorm(sex_val) and not is_v_abnorm(res_val):
+                    if "MOSAIC" not in auto_val and "MOSAIC" not in sex_val and "MOSAIC" not in res_val:
+                        is_a_n = not auto_val or "NORMAL" in auto_val or "EUPLOID" in auto_val
+                        is_s_n = not sex_val or "NORMAL" in sex_val or "EUPLOID" in sex_val
+                        is_r_n = not res_val or "NORMAL" in res_val or "EUPLOID" in res_val
+                        if is_a_n and is_s_n and is_r_n:
+                            e_interp.setCurrentText("Euploid")
+                
                 self.update_batch_preview()
 
             e_autosomes.textChanged.connect(check_batch_interp)
             e_sex_chr.currentTextChanged.connect(check_batch_interp)
+            e_result_summary.currentTextChanged.connect(check_batch_interp)
         
             # CNV Image with upload button
             image_layout = QHBoxLayout()

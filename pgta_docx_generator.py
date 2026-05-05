@@ -320,20 +320,21 @@ class PGTADocxGenerator:
             interp = self._clean(emb.get('interpretation'))
             mt = self._clean(emb.get('mtcopy'), 'NA')
             
-            # Logic: If both autosomes and sex chromosomes are normal, interpretation is Euploid
-            # and MTcopy should be displayed.
+            # Logic: If any of (autosomes, sex chromosomes, result summary) is abnormal, interpretation is Aneuploid.
+            # If all are normal (and not mosaic), interpretation is Euploid.
             auto_val = self._clean(emb.get('autosomes')).upper()
             sex_val = self._clean(emb.get('sex_chromosomes', 'Normal')).upper()
-            is_auto_norm = not auto_val.strip() or "NORMAL" in auto_val or "EUPLOID" in auto_val
-            is_sex_norm = "NORMAL" in sex_val
+            res_val = res_sum.upper()
             
-            if is_auto_norm and is_sex_norm:
-                interp = "Euploid"
-            elif not interp or interp.upper() in ("", "NA"):
-                is_sex_abnormal = "ABNORMAL" in sex_val
-                is_auto_abnormal = not is_auto_norm and "MOSAIC" not in auto_val
-                if is_sex_abnormal or is_auto_abnormal:
-                    interp = "Aneuploid"
+            if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
+                interp = "Aneuploid"
+            elif not self._is_abnormal(auto_val) and not self._is_abnormal(sex_val) and not self._is_abnormal(res_val):
+                if "MOSAIC" not in auto_val and "MOSAIC" not in sex_val and "MOSAIC" not in res_val:
+                    is_a_n = not auto_val or "NORMAL" in auto_val or "EUPLOID" in auto_val
+                    is_s_n = not sex_val or "NORMAL" in sex_val or "EUPLOID" in sex_val
+                    is_r_n = not res_val or "NORMAL" in res_val or "EUPLOID" in res_val
+                    if is_a_n and is_s_n and is_r_n:
+                        interp = "Euploid"
 
             if interp.upper() != "EUPLOID": mt = "NA"
 
@@ -490,18 +491,20 @@ class PGTADocxGenerator:
         auto = self._clean(embryo_data.get('autosomes'))
         sex = self._clean(embryo_data.get('sex_chromosomes'))
         
-        # Logic: If both autosomes and sex chromosomes are normal, interpretation is Euploid
-        # and MTcopy should be displayed.
-        is_auto_norm = not auto.strip() or "NORMAL" in auto.upper() or "EUPLOID" in auto.upper()
-        is_sex_norm = "NORMAL" in sex.upper()
-        
-        if is_auto_norm and is_sex_norm:
-            interp = "Euploid"
-        elif not interp or interp.upper() in ("", "NA"):
-            is_sex_abnormal = "ABNORMAL" in sex.upper()
-            is_auto_abnormal = not is_auto_norm and "MOSAIC" not in auto.upper()
-            if is_sex_abnormal or is_auto_abnormal:
-                interp = "Aneuploid"
+        # Logic: If any of (autosomes, sex chromosomes, result summary) is abnormal, interpretation is Aneuploid.
+        # If all are normal (and not mosaic), interpretation is Euploid.
+        auto_val = auto.upper()
+        sex_val = sex.upper()
+        res_val = res.upper()
+        if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
+            interp = "Aneuploid"
+        elif not self._is_abnormal(auto_val) and not self._is_abnormal(sex_val) and not self._is_abnormal(res_val):
+            if "MOSAIC" not in auto_val and "MOSAIC" not in sex_val and "MOSAIC" not in res_val:
+                is_a_n = not auto_val or "NORMAL" in auto_val or "EUPLOID" in auto_val
+                is_s_n = not sex_val or "NORMAL" in sex_val or "EUPLOID" in sex_val
+                is_r_n = not res_val or "NORMAL" in res_val or "EUPLOID" in res_val
+                if is_a_n and is_s_n and is_r_n:
+                    interp = "Euploid"
 
         mt = self._clean(embryo_data.get('mtcopy'), 'NA')
         if interp.upper() != "EUPLOID": mt = "NA"
@@ -661,6 +664,18 @@ class PGTADocxGenerator:
             self._set_paragraph_font(p1, font_size=11)
             p2 = cell.add_paragraph(title); p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
             self._set_paragraph_font(p2, font_size=11)
+
+    def _is_abnormal(self, val):
+        """Helper to determine if a result field indicates an abnormality (not Normal/Euploid/Mosaic)"""
+        if not val: return False
+        v = str(val).upper()
+        if "ABNORMAL" in v: return True
+        if any(x in v for x in ["NORMAL", "EUPLOID", "NO COPY NUMBER ABNORMALITY"]):
+            return False
+        if "MOSAIC" in v:
+            return False
+        if v == "NA": return False
+        return True
 
     def _get_result_color_hex(self, res, interp):
         """Standard Results Color Map - Euploid=black, Aneuploid=red, Mosaic=blue"""

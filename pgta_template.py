@@ -640,15 +640,21 @@ class PGTAReportTemplate:
             res_sum = self._clean(embryo.get('result_summary'))
             interp = self._clean(embryo.get('interpretation'))
             
-            # Logic: If both autosomes and sex chromosomes are normal, interpretation is Euploid
-            # and MTcopy should be displayed.
+            # Logic: If any of (autosomes, sex chromosomes, result summary) is abnormal, interpretation is Aneuploid.
+            # If all are normal (and not mosaic), interpretation is Euploid.
             auto_val = self._clean(embryo.get('autosomes')).upper()
             sex_val = self._clean(embryo.get('sex_chromosomes', 'Normal')).upper()
-            is_auto_norm = not auto_val.strip() or "NORMAL" in auto_val or "EUPLOID" in auto_val
-            is_sex_norm = "NORMAL" in sex_val
+            res_val = res_sum.upper()
             
-            if is_auto_norm and is_sex_norm:
-                interp = "Euploid"
+            if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
+                interp = "Aneuploid"
+            elif not self._is_abnormal(auto_val) and not self._is_abnormal(sex_val) and not self._is_abnormal(res_val):
+                if "MOSAIC" not in auto_val and "MOSAIC" not in sex_val and "MOSAIC" not in res_val:
+                    is_a_n = not auto_val or "NORMAL" in auto_val or "EUPLOID" in auto_val
+                    is_s_n = not sex_val or "NORMAL" in sex_val or "EUPLOID" in sex_val
+                    is_r_n = not res_val or "NORMAL" in res_val or "EUPLOID" in res_val
+                    if is_a_n and is_s_n and is_r_n:
+                        interp = "Euploid"
 
             # Application of Red/Blue color logic
             res_color = self._get_result_color(res_sum, interp)
@@ -853,13 +859,20 @@ class PGTAReportTemplate:
         elif "ABNORMAL" in sex_text.upper():
             sex_color = colors.red
 
-        # Logic: If both autosomes and sex chromosomes are normal, interpretation is Euploid
-        # and MTcopy should be displayed.
-        is_auto_norm = not autosomes_text.strip() or "NORMAL" in autosomes_text.upper() or "EUPLOID" in autosomes_text.upper()
-        is_sex_norm = "NORMAL" in sex_text.upper()
-        
-        if is_auto_norm and is_sex_norm:
-            interp_text = "Euploid"
+        # Logic: If any of (autosomes, sex chromosomes, result summary) is abnormal, interpretation is Aneuploid.
+        # If all are normal (and not mosaic), interpretation is Euploid.
+        auto_val = autosomes_text.upper()
+        sex_val = sex_text.upper()
+        res_val = result_summary_text.upper()
+        if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
+            interp_text = "Aneuploid"
+        elif not self._is_abnormal(auto_val) and not self._is_abnormal(sex_val) and not self._is_abnormal(res_val):
+            if "MOSAIC" not in auto_val and "MOSAIC" not in sex_val and "MOSAIC" not in res_val:
+                is_a_n = not auto_val or "NORMAL" in auto_val or "EUPLOID" in auto_val
+                is_s_n = not sex_val or "NORMAL" in sex_val or "EUPLOID" in sex_val
+                is_r_n = not res_val or "NORMAL" in res_val or "EUPLOID" in res_val
+                if is_a_n and is_s_n and is_r_n:
+                    interp_text = "Euploid"
 
         # MTcopy: NA for non-euploid
         mtcopy = self._clean(embryo_data.get('mtcopy'), 'NA')
@@ -1137,6 +1150,18 @@ class PGTAReportTemplate:
             ("ALIGN", (0, 0), (-1, -1), "LEFT"),
         ] + self._get_grid_style()))
         return header_table
+
+    def _is_abnormal(self, val):
+        """Helper to determine if a result field indicates an abnormality (not Normal/Euploid/Mosaic)"""
+        if not val: return False
+        v = str(val).upper()
+        if "ABNORMAL" in v: return True
+        if any(x in v for x in ["NORMAL", "EUPLOID", "NO COPY NUMBER ABNORMALITY"]):
+            return False
+        if "MOSAIC" in v:
+            return False
+        if v == "NA": return False
+        return True
 
     def _get_result_color(self, result_text, interpretation_text):
         """Determine if text should be Red (Aneuploid), Blue (Mosaic) or Black (Euploid)"""
