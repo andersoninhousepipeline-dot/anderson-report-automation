@@ -523,7 +523,6 @@ class PGTADocxGenerator:
             if inconclusive_comment:
                 comment_p = doc.add_paragraph(inconclusive_comment)
                 self._set_paragraph_font(comment_p, font_size=11)
-        
         if not is_inconclusive:
             chr_statuses = embryo_data.get('chromosome_statuses', {})
             mosaic_map = embryo_data.get('mosaic_percentages', {})
@@ -531,11 +530,21 @@ class PGTADocxGenerator:
             autosomes = str(embryo_data.get('autosomes', '')).upper()
             sex_chrs = str(embryo_data.get('sex_chromosomes', '')).upper()
             
+            # Mosaic status codes that require a Mosaic(%) row
+            _MOSAIC_CODES = {'M', 'MG', 'ML', 'SMG', 'SML'}
+            
             import re as re_mos
-            has_mosaic = any(
+            # Check if any chromosome has a mosaic CNV status code
+            has_mosaic_status = any(
+                str(v).strip().upper() in _MOSAIC_CODES
+                for v in chr_statuses.values()
+            )
+            # Check if any mosaic percentage has a real numeric value
+            has_mosaic_pct = any(
                 v and str(v).strip() and str(v).strip() != '-' and re_mos.search(r'\d', str(v))
                 for v in mosaic_map.values()
             )
+            has_mosaic = has_mosaic_status or has_mosaic_pct
             
             is_autosomes_normal = 'NORMAL' in autosomes or 'EUPLOID' in autosomes or not autosomes.strip()
             is_sex_mosaic = 'MOSAIC' in sex_chrs
@@ -570,11 +579,18 @@ class PGTADocxGenerator:
                     cell.text = stat
                 self._set_paragraph_font(p, font_size=cnv_fs, bold=True, color=color)
 
-            # Mosaic Row
+            # Mosaic Row - percentage values colored by their chromosome's status
             if has_mosaic:
+                # Label cell
                 cnv_table.rows[2].cells[0].text = "Mosaic (%)"
+                self._set_paragraph_font(cnv_table.rows[2].cells[0].paragraphs[0], font_size=cnv_fs, bold=True)
                 for i in range(1, 23):
-                    cnv_table.rows[2].cells[i].text = str(mosaic_map.get(str(i), '-'))
+                    perc = str(mosaic_map.get(str(i), '-'))
+                    cnv_table.rows[2].cells[i].text = perc
+                    # Color the percentage value to match the chromosome's CNV status color
+                    stat = str(chr_statuses.get(str(i), 'N'))
+                    perc_color = self._get_status_color_docx(stat)
+                    self._set_paragraph_font(cnv_table.rows[2].cells[i].paragraphs[0], font_size=cnv_fs, bold=True, color=perc_color)
 
             for row in cnv_table.rows:
                 for c_idx, cell in enumerate(row.cells):
@@ -582,6 +598,9 @@ class PGTADocxGenerator:
                     p = cell.paragraphs[0]
                     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     if c_idx == 0: p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    # Skip re-formatting mosaic row cells (row index 2) since they already have per-cell colors
+                    if has_mosaic and row == cnv_table.rows[2]:
+                        continue
                     self._set_paragraph_font(p, font_size=cnv_fs, bold=True)
 
         doc.add_paragraph()

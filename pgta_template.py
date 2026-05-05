@@ -956,17 +956,27 @@ class PGTAReportTemplate:
         autosomes = str(embryo_data.get('autosomes', '')).upper()
         sex_chrs = str(embryo_data.get('sex_chromosomes', '')).upper()
         
-        # Check for actual mosaic percentage values (not empty, not dash, must contain a digit)
+        # Mosaic status codes that require a Mosaic(%) row
+        _MOSAIC_CODES = {'M', 'MG', 'ML', 'SMG', 'SML'}
+
+        # Show Mosaic(%) row if:
+        #   a) any chromosome has a mosaic CNV status code, OR
+        #   b) mosaic_percentages dict has at least one real numeric value
         import re as re_mos
-        has_mosaic = any(
+        has_mosaic_status = any(
+            str(v).strip().upper() in _MOSAIC_CODES
+            for v in chr_statuses.values()
+        )
+        has_mosaic_pct = any(
             v and str(v).strip() and str(v).strip() != '-' and re_mos.search(r'\d', str(v))
             for v in mosaic_percentages.values()
         )
-        
-        # Rule: If Autosomes is Normal/Euploid & Sex chromosome is Mosaic gain/loss -> omit Mosaic(%) row
+        has_mosaic = has_mosaic_status or has_mosaic_pct
+
+        # Rule: If Autosomes is Normal/Euploid & Sex chromosome is Mosaic → omit row
         is_autosomes_normal = 'NORMAL' in autosomes or 'EUPLOID' in autosomes or not autosomes.strip()
         is_sex_mosaic = 'MOSAIC' in sex_chrs
-        
+
         if is_autosomes_normal and is_sex_mosaic:
             has_mosaic = False
             
@@ -974,7 +984,7 @@ class PGTAReportTemplate:
         if has_mosaic:
             header = [self._wrap_text('Chromosome', bold=True, align='CENTER', font_size=cnv_fs)] + [self._wrap_text(str(i), bold=True, align='CENTER', font_size=cnv_fs) for i in range(1, 23)]
             cnv_row = [self._wrap_text('CNV status', bold=True, align='CENTER', font_size=cnv_fs)]
-            mosaic_row = [self._wrap_text(self._wrap_colored('Mosaic (%)', colors.blue, bold=True), bold=False, align='CENTER', font_size=cnv_fs)]
+            mosaic_row = [self._wrap_text('Mosaic (%)', bold=True, align='CENTER', font_size=cnv_fs)]
 
             for i in range(1, 23):
                 status = chr_statuses.get(str(i), 'N')
