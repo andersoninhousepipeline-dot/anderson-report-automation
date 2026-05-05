@@ -427,17 +427,16 @@ class PGTAReportTemplate:
                 return False
 
         if show_logo:
-            # Draw Header Logo (Base64)
-            draw_b64_img(HEADER_LOGO_B64, 72, 720, 468, 72)
-            
-            # Draw Footer Banner (Base64)
-            draw_b64_img(FOOTER_BANNER_B64, 72, 0.4, 468, 66)
-        
-        # ALWAYS Draw GenQA Logo (per user request: "without logo genqa must be there")
+            # Header and footer span the full content width (MARGIN_LEFT=58, CONTENT_WIDTH=496)
+            draw_b64_img(HEADER_LOGO_B64, self.MARGIN_LEFT, 720, self.CONTENT_WIDTH, 72)
+            draw_b64_img(FOOTER_BANNER_B64, self.MARGIN_LEFT, 0.4, self.CONTENT_WIDTH, 66)
+
+        # ALWAYS Draw GenQA Logo — right-aligned to content right edge
         if os.path.exists(self.GENQA_LOGO):
              try:
-                 # Moved up to y=66.5 to be visible just above footer banner and leave space for QR code
-                 canvas.drawImage(self.GENQA_LOGO, 454, 66.5, width=67, height=36, preserveAspectRatio=True, mask='auto')
+                 genqa_w = 67
+                 genqa_x = self.MARGIN_LEFT + self.CONTENT_WIDTH - genqa_w  # flush with right margin
+                 canvas.drawImage(self.GENQA_LOGO, genqa_x, 66.5, width=genqa_w, height=36, preserveAspectRatio=True, mask='auto')
              except:
                  pass
         
