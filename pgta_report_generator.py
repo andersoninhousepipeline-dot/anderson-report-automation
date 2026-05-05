@@ -941,11 +941,15 @@ class PGTAReportGeneratorApp(QMainWindow):
         
         # Auto-update interpretation for manual entry
         def check_manual_interp():
-            if autosomes.text().strip().lower() == "normal" and sex_chromosomes.currentText().strip().lower() == "normal":
-                if self.summary_table.rowCount() >= embryo_num:
-                    interp_widget = self.summary_table.cellWidget(embryo_num - 1, 2)
-                    if interp_widget:
+            auto_text = autosomes.text().strip().lower()
+            sex_text = sex_chromosomes.currentText().strip().lower()
+            if self.summary_table.rowCount() >= embryo_num:
+                interp_widget = self.summary_table.cellWidget(embryo_num - 1, 2)
+                if interp_widget:
+                    if auto_text == "normal" and sex_text == "normal":
                         interp_widget.setCurrentText("Euploid")
+                    elif sex_text == "abnormal" or (auto_text not in ("", "normal") and "mosaic" not in auto_text):
+                        interp_widget.setCurrentText("Aneuploid")
             self.update_preview()
 
         autosomes.textChanged.connect(check_manual_interp)
@@ -5270,7 +5274,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                                 result_summary_val = "Multiple chromosomal abnormalities"
                             else:
                                 result_summary_val = "Multiple chromosomal abnormalities"  # Could also be single, but safer default
-                            interp = "NA"
+                            interp = "Aneuploid"
                         
                         # Advanced Parsing for Chromosome Statuses
                         # Example: del(5)(p15.33q12.3)(~64.50Mb,~57%)
@@ -6308,9 +6312,11 @@ Use null for fields not found. Return ONLY valid JSON."""
                     sex_val = clean_val(row.get(get_col_name(df, ['SEX', 'Sex'])) if get_col_name(df, ['SEX', 'Sex']) else None, "Normal")
                     interp_val = clean_val(row.get(get_col_name(df, ['Interpretation'])))
                     
-                    # Auto-set Interpretation to Euploid if both are Normal
+                    # Auto-set Interpretation based on autosomes/sex chromosome status
                     if not interp_val and autosomes_val.lower() == "normal" and sex_val.lower() == "normal":
                         interp_val = "Euploid"
+                    elif not interp_val and ("abnormal" in sex_val.lower() or (autosomes_val.lower() not in ("normal", "", "nan") and "mosaic" not in autosomes_val.lower())):
+                        interp_val = "Aneuploid"
 
                     embryos.append({
                         'embryo_id': embryo_id,
