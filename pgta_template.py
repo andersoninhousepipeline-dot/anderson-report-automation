@@ -650,11 +650,8 @@ class PGTAReportTemplate:
             if is_auto_norm and is_sex_norm:
                 interp = "Euploid"
 
-            # Application of Red/Blue color logic
-            res_color = self._get_result_color(res_sum, interp)
-            # Mosaic text always blue regardless of other conditions
-            if 'MOSAIC' in res_sum.upper() or 'MOSAIC' in interp.upper():
-                res_color = colors.blue
+            # Force black color for all results as per latest request
+            res_color = colors.black
 
             # MTcopy: NA for non-euploid
             mtcopy = self._clean(embryo.get('mtcopy'), 'NA')
@@ -817,15 +814,10 @@ class PGTAReportTemplate:
         sex_text = self._clean(embryo_data.get('sex_chromosomes', 'Normal'))
         result_summary_text = self._clean(embryo_data.get('result_summary', ''))
         
-        # Color based on interpretation for interpretation field
-        # Also pass result_summary so "Multiple chromosomal abnormalities" drives red color
-        interp_color = self._get_result_color(result_summary_text, interp_text)
+        # Force black color for all results as per latest request
+        interp_color = colors.black
         
-        # Autosomes Color Logic:
-        # Blue (mosaic) = Has % sign (e.g., +15(~30%), -20(~51%), dup(9)...(~32%))
-        # Red (non-mosaic) = del/dup/-/+ without %, or CNV status L/G/SL/SG
-        # Red = Multiple chromosomal abnormalities (explicit result_summary check)
-        # Black = Normal/Euploid
+        # Force black color for all results as per latest request
         auto_color = colors.black
         auto_upper = autosomes_text.upper()
 
@@ -843,19 +835,19 @@ class PGTAReportTemplate:
             auto_color = colors.black
         # Mosaic = has % sign
         elif '%' in autosomes_text:
-            auto_color = colors.blue
+            auto_color = colors.black
         # Non-mosaic abnormalities (no % sign)
         elif any(x in auto_upper for x in ['DEL(', 'DUP(', '-', '+', 'STATUS L', 'STATUS G', 'STATUS SL', 'STATUS SG', ' SL', ' SG', ' L,', ' G,', ' L ', ' G ']) or auto_upper.endswith(' L') or auto_upper.endswith(' G'):
-            auto_color = colors.red
+            auto_color = colors.black
         elif 'CNV STATUS' in auto_upper:
-            auto_color = colors.red
+            auto_color = colors.black
 
-        # Sex Chromosome Color: mosaic → blue, abnormal → red, else black
+        # Sex Chromosome Color: mosaic → black, abnormal → black, else black
         sex_color = colors.black
         if 'MOSAIC' in sex_text.upper():
-            sex_color = colors.blue
+            sex_color = colors.black
         elif "ABNORMAL" in sex_text.upper():
-            sex_color = colors.red
+            sex_color = colors.black
 
         # Logic: If both autosomes and sex chromosomes are normal, interpretation is Euploid
         # and MTcopy should be displayed.
@@ -885,15 +877,11 @@ class PGTAReportTemplate:
         elements.append(Paragraph(f"<b>EMBRYO: {detail_embryo_id}</b>", embryo_id_style))
         elements.append(Spacer(1, 6))
         
-        # Result color: use full result/interpretation logic
-        res_color = self._get_result_color(result_summary_text, interp_text)
-
-        # Per-field mosaic override: if a field's own text contains "mosaic",
-        # force blue — all other color rules (red for abnormalities, etc.) are kept.
-        if 'MOSAIC' in res_text.upper():       res_color    = colors.blue
-        if 'MOSAIC' in autosomes_text.upper(): auto_color   = colors.blue
-        if 'MOSAIC' in sex_text.upper():       sex_color    = colors.blue
-        if 'MOSAIC' in interp_text.upper():    interp_color = colors.blue
+        # Force black color for all results as per latest request
+        res_color = colors.black
+        auto_color = colors.black
+        sex_color = colors.black
+        interp_color = colors.black
         detail_data = [
             [self._wrap_text(f"<b>Result:</b> {self._wrap_colored(res_text, res_color, bold=False)}", False)],
             [self._wrap_text(f"<b>Autosomes:</b> {self._wrap_colored(autosomes_text, auto_color, bold=False)}", False)],
