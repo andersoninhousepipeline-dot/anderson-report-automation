@@ -823,11 +823,7 @@ class PGTAReportTemplate:
         sex_text = self._clean(embryo_data.get('sex_chromosomes', 'Normal'))
         result_summary_text = self._clean(embryo_data.get('result_summary', ''))
         
-        # Color based on interpretation for interpretation field
-        # Also pass result_summary so "Multiple chromosomal abnormalities" drives red color
-        interp_color = self._get_result_color(result_summary_text, interp_text)
-        
-        # Force black color for all results as per latest request
+        # Initial color defaults
         auto_color = colors.black
         auto_upper = autosomes_text.upper()
 
@@ -878,6 +874,9 @@ class PGTAReportTemplate:
         mtcopy = self._clean(embryo_data.get('mtcopy'), 'NA')
         if interp_text.upper() != "EUPLOID":
             mtcopy = "NA"
+            
+        # Recalculate interpretation color AFTER logic has potentially changed it to Aneuploid
+        interp_color = self._get_result_color(result_summary_text, interp_text)
             
         # Embryo Identification matching source style
         # Font: Gill Sans MT,Bold, Size: 12.00
@@ -1174,7 +1173,7 @@ class PGTAReportTemplate:
         
         # Red Logic - Aneuploid and related abnormalities
         red_keywords = ["MONOSOMY", "TRISOMY", "SEGMENTAL GAIN", "SEGMENTAL LOSS", 
-                        "MULTIPLE CHROMOSOMAL ABNORMALITIES", "ANEUPLOID", "CHAOTIC EMBRYO"]
+                        "MULTIPLE CHROMOSOMAL ABNORMALITIES", "ANEUPLOID", "CHAOTIC EMBRYO", "ABNORMAL"]
         if any(kw in res_up for kw in red_keywords) or any(kw in int_up for kw in red_keywords):
             return colors.red
             

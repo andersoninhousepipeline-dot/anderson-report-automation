@@ -684,6 +684,7 @@ class PGTADocxGenerator:
         if "EUPLOID" in i and "ANEUPLOID" not in i:
             return "#000000"
         if any(k in i for k in ["ANEUPLOID", "ABNORMAL"]): return "#FF0000"
+        if any(k in r for k in ["ANEUPLOID", "ABNORMAL"]): return "#FF0000"
         # Blue for mosaic results
         r = str(res).upper()
         blue_keywords = ["MULTIPLE MOSAIC CHROMOSOME COMPLEMENT", "MOSAIC CHROMOSOME COMPLEMENT", "COMPLEX MOSAIC"]
