@@ -586,6 +586,8 @@ class PGTADocxGenerator:
                 self._set_paragraph_font(cnv_table.rows[2].cells[0].paragraphs[0], font_size=cnv_fs, bold=True)
                 for i in range(1, 23):
                     perc = str(mosaic_map.get(str(i), '-'))
+                    if not perc.strip():
+                        perc = '-'
                     cnv_table.rows[2].cells[i].text = perc
                     # Color the percentage value to match the chromosome's CNV status color
                     stat = str(chr_statuses.get(str(i), 'N'))

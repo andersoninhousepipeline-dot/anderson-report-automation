@@ -989,6 +989,8 @@ class PGTAReportTemplate:
             for i in range(1, 23):
                 status = chr_statuses.get(str(i), 'N')
                 perc = mosaic_percentages.get(str(i), '-')
+                if not str(perc).strip():
+                    perc = '-'
                 s_color = self._get_status_color(status)
 
                 display_status = status.replace('/', '/<br/>')  # force wrap at slash boundary
