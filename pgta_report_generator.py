@@ -5952,6 +5952,10 @@ Use null for fields not found. Return ONLY valid JSON."""
                 'inconclusive_comment': editor['inconclusive_comment'].toPlainText() if 'inconclusive_comment' in editor else ''
             })
 
+        # Sync back to main list so "Generate All" uses edited values
+        self.bulk_patient_data_list[self.current_batch_index]['patient_info'].update(p_data)
+        self.bulk_patient_data_list[self.current_batch_index]['embryos'] = e_data
+
         import tempfile
         temp_pdf = os.path.join(tempfile.gettempdir(), f"batch_preview_{self.current_batch_index}.pdf")
         

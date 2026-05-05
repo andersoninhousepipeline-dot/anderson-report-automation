@@ -317,6 +317,7 @@ class PGTADocxGenerator:
             row.cells[1].text = self._clean(emb.get('embryo_id'))
             
             res_sum = self._clean(emb.get('result_summary'))
+            interp = self._clean(emb.get('interpretation'))
             mt = self._clean(emb.get('mtcopy'), 'NA')
             
             # Logic: If both autosomes and sex chromosomes are normal, interpretation is Euploid
