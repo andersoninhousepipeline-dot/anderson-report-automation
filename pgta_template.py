@@ -630,7 +630,10 @@ class PGTAReportTemplate:
             
             # Application of Red/Blue color logic
             res_color = self._get_result_color(res_sum, interp)
-            
+            # Mosaic text always blue regardless of other conditions
+            if 'MOSAIC' in res_sum.upper() or 'MOSAIC' in interp.upper():
+                res_color = colors.blue
+
             # MTcopy: NA for non-euploid
             mtcopy = self._clean(embryo.get('mtcopy'), 'NA')
             if interp.upper() != "EUPLOID":
@@ -803,12 +806,15 @@ class PGTAReportTemplate:
         # Black = Normal/Euploid
         auto_color = colors.black
         auto_upper = autosomes_text.upper()
-        
+
         # Check for "Multiple chromosomal abnormalities" in result_summary first
         if "MULTIPLE CHROMOSOMAL ABNORMALITIES" in result_summary_text.upper():
             auto_color = colors.red
         # Multiple Mosaic Chromosome complement → blue
         elif 'MULTIPLE MOSAIC CHROMOSOME COMPLEMENT' in auto_upper:
+            auto_color = colors.blue
+        # Any mosaic mention in autosomes text → blue
+        elif 'MOSAIC' in auto_upper:
             auto_color = colors.blue
         # Check for Normal/Euploid
         elif 'NORMAL' in auto_upper or 'EUPLOID' in auto_upper or not autosomes_text.strip():
@@ -821,10 +827,12 @@ class PGTAReportTemplate:
             auto_color = colors.red
         elif 'CNV STATUS' in auto_upper:
             auto_color = colors.red
-        
-        # Sex Chromosome Color
+
+        # Sex Chromosome Color: mosaic → blue, abnormal → red, else black
         sex_color = colors.black
-        if "ABNORMAL" in sex_text.upper():
+        if 'MOSAIC' in sex_text.upper():
+            sex_color = colors.blue
+        elif "ABNORMAL" in sex_text.upper():
             sex_color = colors.red
 
         # MTcopy: NA for non-euploid
@@ -847,8 +855,15 @@ class PGTAReportTemplate:
         elements.append(Paragraph(f"<b>EMBRYO: {detail_embryo_id}</b>", embryo_id_style))
         elements.append(Spacer(1, 6))
         
-        # Result row: blue for Multiple Mosaic Chromosome complement, black otherwise
-        res_color = colors.blue if 'MULTIPLE MOSAIC CHROMOSOME COMPLEMENT' in res_text.upper() else colors.black
+        # Result color: use full result/interpretation logic
+        res_color = self._get_result_color(result_summary_text, interp_text)
+
+        # Per-field mosaic override: if a field's own text contains "mosaic",
+        # force blue — all other color rules (red for abnormalities, etc.) are kept.
+        if 'MOSAIC' in res_text.upper():       res_color    = colors.blue
+        if 'MOSAIC' in autosomes_text.upper(): auto_color   = colors.blue
+        if 'MOSAIC' in sex_text.upper():       sex_color    = colors.blue
+        if 'MOSAIC' in interp_text.upper():    interp_color = colors.blue
         detail_data = [
             [self._wrap_text(f"<b>Result:</b> {self._wrap_colored(res_text, res_color, bold=False)}", False)],
             [self._wrap_text(f"<b>Autosomes:</b> {self._wrap_colored(autosomes_text, auto_color, bold=False)}", False)],
