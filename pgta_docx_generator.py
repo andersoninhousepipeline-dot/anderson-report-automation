@@ -327,7 +327,7 @@ class PGTADocxGenerator:
             res_val = res_sum.upper()
             
             # Only auto-derive interpretation when not explicitly set by user
-            if not interp or interp.upper() == "NA":
+            if not interp:
                 if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
                     interp = "Aneuploid"
                 elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val:
@@ -503,7 +503,7 @@ class PGTADocxGenerator:
         sex_val = sex.upper()
         res_val = res.upper()
         # Only auto-derive interpretation when not explicitly set by user
-        if not interp or interp.upper() == "NA":
+        if not interp:
             if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
                 interp = "Aneuploid"
             elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val:

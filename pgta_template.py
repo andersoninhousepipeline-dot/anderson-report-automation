@@ -647,7 +647,7 @@ class PGTAReportTemplate:
             res_val = res_sum.upper()
             
             # Only auto-derive interpretation when not explicitly set by user
-            if not interp or interp.upper() == "NA":
+            if not interp:
                 if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
                     interp = "Aneuploid"
                 elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val:
@@ -866,7 +866,7 @@ class PGTAReportTemplate:
         sex_val = sex_text.upper()
         res_val = result_summary_text.upper()
         # Only auto-derive interpretation when not explicitly set by user
-        if not interp_text or interp_text.upper() == "NA":
+        if not interp_text:
             if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
                 interp_text = "Aneuploid"
             elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val:

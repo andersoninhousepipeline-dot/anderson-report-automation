@@ -987,13 +987,17 @@ class PGTAReportGeneratorApp(QMainWindow):
         def check_manual_interp():
             auto_text = autosomes.text().strip().lower()
             sex_text = sex_chromosomes.currentText().strip().lower()
-            cur = interp_form_combo.currentText().lower()
+            cur = interp_form_combo.currentText()
+            if cur.upper() == "NA":
+                self.update_preview()
+                return  # User explicitly set NA — do not override
+            cur_lower = cur.lower()
             if auto_text == "normal" and sex_text == "normal":
                 _apply_interp("Euploid")
             elif sex_text == "abnormal" or (auto_text not in ("", "normal") and "mosaic" not in auto_text):
                 _apply_interp("Aneuploid")
             elif sex_text == "mosaic" or "mosaic" in auto_text:
-                if "mosaic" not in cur:
+                if "mosaic" not in cur_lower:
                     _apply_interp("Low level mosaic")
             self.update_preview()
 
@@ -5732,10 +5736,14 @@ Use null for fields not found. Return ONLY valid JSON."""
 
             # Auto-update interpretation for batch editor
             def check_batch_interp():
+                if e_interp.currentText().upper() == "NA":
+                    self.update_batch_preview()
+                    return  # User explicitly set NA — do not override
+
                 auto_val = e_autosomes.text().strip().upper()
                 sex_val = e_sex_chr.currentText().strip().upper()
                 res_val = e_result_summary.currentText().strip().upper()
-                
+
                 def is_v_abnorm(v):
                     if not v: return False
                     if "ABNORMAL" in v: return True
