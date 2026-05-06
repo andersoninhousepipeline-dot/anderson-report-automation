@@ -871,6 +871,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                 add_colored_items_to_combo(combo, [
                     ("Euploid", "black"),
                     ("Aneuploid", "red"),
+                    ("(-)", "red"),
                     ("NA", "black"),
                     ("Chaotic embryo", "red"),
                     ("Low level mosaic", "blue"),
@@ -946,6 +947,7 @@ class PGTAReportGeneratorApp(QMainWindow):
         add_colored_items_to_combo(interp_form_combo, [
             ("Euploid", "black"),
             ("Aneuploid", "red"),
+            ("(-)", "red"),
             ("NA", "black"),
             ("Chaotic embryo", "red"),
             ("Low level mosaic", "blue"),
@@ -1645,7 +1647,7 @@ class PGTAReportGeneratorApp(QMainWindow):
         interp_upper = str(interp).upper()
         res_sum_upper = str(res_sum).upper()
         
-        if "ANEUPLOID" in interp_upper or "CHAOTIC" in interp_upper or "MULTIPLE" in res_sum_upper:
+        if "ANEUPLOID" in interp_upper or "CHAOTIC" in interp_upper or "MULTIPLE" in res_sum_upper or interp_upper.strip() == "(-)":
             return "text-red"
         elif "MOSAIC" in interp_upper or "MOSAIC" in res_sum_upper:
             return "text-blue"
@@ -5715,6 +5717,7 @@ Use null for fields not found. Return ONLY valid JSON."""
             add_colored_items_to_combo(e_interp, [
                 ("Euploid", "black"),
                 ("Aneuploid", "red"),
+                ("(-)", "red"),
                 ("NA", "black"),
                 ("Chaotic embryo", "red"),
                 ("Low level mosaic", "blue"),

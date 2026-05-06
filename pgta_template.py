@@ -1197,9 +1197,11 @@ class PGTAReportTemplate:
             return colors.black
         
         # Red Logic - Aneuploid and related abnormalities
-        red_keywords = ["MONOSOMY", "TRISOMY", "SEGMENTAL GAIN", "SEGMENTAL LOSS", 
+        red_keywords = ["MONOSOMY", "TRISOMY", "SEGMENTAL GAIN", "SEGMENTAL LOSS",
                         "MULTIPLE CHROMOSOMAL ABNORMALITIES", "ANEUPLOID", "CHAOTIC EMBRYO", "ABNORMAL"]
         if any(kw in res_up for kw in red_keywords) or any(kw in int_up for kw in red_keywords):
+            return colors.red
+        if int_up.strip() == "(-)":
             return colors.red
             
         # Blue for mosaic results (any mosaic interpretation or result)

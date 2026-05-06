@@ -710,7 +710,7 @@ class PGTADocxGenerator:
         # Euploid = Black (check first for explicit euploid)
         if "EUPLOID" in i and "ANEUPLOID" not in i:
             return "#000000"
-        if any(k in i for k in ["ANEUPLOID", "ABNORMAL"]): return "#FF0000"
+        if any(k in i for k in ["ANEUPLOID", "ABNORMAL"]) or i.strip() == "(-)": return "#FF0000"
         r = str(res).upper()
         if any(k in r for k in ["ANEUPLOID", "ABNORMAL"]): return "#FF0000"
         # Blue for any mosaic interpretation or result
