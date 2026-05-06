@@ -648,7 +648,9 @@ class PGTAReportTemplate:
             
             # Only auto-derive interpretation when not explicitly set by user
             if not interp:
-                if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
+                if "LOW DNA" in res_val or "INCONCLUSIVE" in res_val:
+                    interp = "NA"
+                elif self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
                     interp = "Aneuploid"
                 elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val or "%" in auto_val:
                     interp = self._mosaic_level(auto_val + " " + sex_val)
@@ -867,7 +869,9 @@ class PGTAReportTemplate:
         res_val = result_summary_text.upper()
         # Only auto-derive interpretation when not explicitly set by user
         if not interp_text:
-            if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
+            if "LOW DNA" in res_val or "INCONCLUSIVE" in res_val:
+                interp_text = "NA"
+            elif self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
                 interp_text = "Aneuploid"
             elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val or "%" in auto_val:
                 interp_text = self._mosaic_level(auto_val + " " + sex_val)

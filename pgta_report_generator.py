@@ -987,6 +987,13 @@ class PGTAReportGeneratorApp(QMainWindow):
 
         # Auto-update interpretation for manual entry
         def check_manual_interp():
+            # Low DNA concentration → always NA
+            res_w = self.summary_table.cellWidget(embryo_num - 1, 1) if self.summary_table.rowCount() >= embryo_num else None
+            res_sum_text = res_w.currentText() if res_w else ""
+            if "LOW DNA" in res_sum_text.upper() or "INCONCLUSIVE" in res_sum_text.upper():
+                _apply_interp("NA")
+                self.update_preview()
+                return
             auto_text = autosomes.text().strip().lower()
             sex_text = sex_chromosomes.currentText().strip().lower()
             cur = interp_form_combo.currentText()
@@ -1005,6 +1012,11 @@ class PGTAReportGeneratorApp(QMainWindow):
 
         autosomes.textChanged.connect(check_manual_interp)
         sex_chromosomes.currentTextChanged.connect(check_manual_interp)
+        # Trigger when result_summary changes (Low DNA / Inconclusive → NA)
+        if self.summary_table.rowCount() >= embryo_num:
+            _rs_w = self.summary_table.cellWidget(embryo_num - 1, 1)
+            if _rs_w:
+                _rs_w.currentTextChanged.connect(lambda _: check_manual_interp())
 
         form.addRow("Result Description (Page 4):", result_description)
         form.addRow("Autosomes:", autosomes)
@@ -5739,6 +5751,12 @@ Use null for fields not found. Return ONLY valid JSON."""
 
             # Auto-update interpretation for batch editor
             def check_batch_interp():
+                res_text = e_result_summary.currentText().strip().upper()
+                if "LOW DNA" in res_text or "INCONCLUSIVE" in res_text:
+                    e_interp.setCurrentText("NA")
+                    self.update_batch_preview()
+                    return  # Low DNA / Inconclusive → always NA
+
                 if e_interp.currentText().upper() == "NA":
                     self.update_batch_preview()
                     return  # User explicitly set NA — do not override
