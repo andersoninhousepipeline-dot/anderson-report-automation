@@ -936,32 +936,74 @@ class PGTAReportGeneratorApp(QMainWindow):
         sex_chromosomes.setEditable(True)
         sex_chromosomes.setInsertPolicy(ClickOnlyComboBox.InsertPolicy.NoInsert)
         
+        # Interpretation dropdown (inline in form, synced with summary table)
+        initial_interp = "Euploid"
+        if self.summary_table.rowCount() >= embryo_num:
+            w = self.summary_table.cellWidget(embryo_num - 1, 2)
+            if w:
+                initial_interp = w.currentText()
+        interp_form_combo = ClickOnlyComboBox()
+        add_colored_items_to_combo(interp_form_combo, [
+            ("Euploid", "black"),
+            ("Aneuploid", "red"),
+            ("NA", "black"),
+            ("Chaotic embryo", "red"),
+            ("Low level mosaic", "blue"),
+            ("High level mosaic", "blue"),
+            ("Complex mosaic", "blue")
+        ])
+        interp_form_combo.setEditable(True)
+        interp_form_combo.setInsertPolicy(ClickOnlyComboBox.InsertPolicy.NoInsert)
+        interp_form_combo.setCurrentText(initial_interp)
+
+        def _apply_interp(text):
+            """Set interpretation in both form combo and summary table without recursion."""
+            interp_form_combo.blockSignals(True)
+            interp_form_combo.setCurrentText(text)
+            interp_form_combo.blockSignals(False)
+            if self.summary_table.rowCount() >= embryo_num:
+                w = self.summary_table.cellWidget(embryo_num - 1, 2)
+                if w:
+                    w.blockSignals(True)
+                    w.setCurrentText(text)
+                    w.blockSignals(False)
+
+        def on_form_interp_changed(text):
+            """User manually edited interpretation in form → sync to summary table."""
+            if self.summary_table.rowCount() >= embryo_num:
+                w = self.summary_table.cellWidget(embryo_num - 1, 2)
+                if w and w.currentText() != text:
+                    w.blockSignals(True)
+                    w.setCurrentText(text)
+                    w.blockSignals(False)
+            self.update_preview()
+
+        interp_form_combo.currentTextChanged.connect(on_form_interp_changed)
+
         # Connect signals
         result_description.currentTextChanged.connect(self.update_preview)
-        
+
         # Auto-update interpretation for manual entry
         def check_manual_interp():
             auto_text = autosomes.text().strip().lower()
             sex_text = sex_chromosomes.currentText().strip().lower()
-            if self.summary_table.rowCount() >= embryo_num:
-                interp_widget = self.summary_table.cellWidget(embryo_num - 1, 2)
-                if interp_widget:
-                    if auto_text == "normal" and sex_text == "normal":
-                        interp_widget.setCurrentText("Euploid")
-                    elif sex_text == "abnormal" or (auto_text not in ("", "normal") and "mosaic" not in auto_text):
-                        interp_widget.setCurrentText("Aneuploid")
-                    elif sex_text == "mosaic" or "mosaic" in auto_text:
-                        cur = interp_widget.currentText().lower()
-                        if "mosaic" not in cur:
-                            interp_widget.setCurrentText("Low level mosaic")
+            cur = interp_form_combo.currentText().lower()
+            if auto_text == "normal" and sex_text == "normal":
+                _apply_interp("Euploid")
+            elif sex_text == "abnormal" or (auto_text not in ("", "normal") and "mosaic" not in auto_text):
+                _apply_interp("Aneuploid")
+            elif sex_text == "mosaic" or "mosaic" in auto_text:
+                if "mosaic" not in cur:
+                    _apply_interp("Low level mosaic")
             self.update_preview()
 
         autosomes.textChanged.connect(check_manual_interp)
         sex_chromosomes.currentTextChanged.connect(check_manual_interp)
-        
+
         form.addRow("Result Description (Page 4):", result_description)
         form.addRow("Autosomes:", autosomes)
         form.addRow("Sex Chromosomes:", sex_chromosomes)
+        form.addRow("Interpretation:", interp_form_combo)
         
         # Image Upload
         img_layout = QHBoxLayout()
@@ -1040,6 +1082,7 @@ class PGTAReportGeneratorApp(QMainWindow):
             'result_description': result_description,
             'autosomes': autosomes,
             'sex_chromosomes': sex_chromosomes,
+            'interpretation': interp_form_combo,
             'chr_inputs': chr_inputs,
             'chart_path_label': img_path_label,
             'inconclusive_comment': inconclusive_comment
@@ -1560,10 +1603,14 @@ class PGTAReportGeneratorApp(QMainWindow):
         
         if new_index < len(self.embryo_forms):
             form = self.embryo_forms[new_index]
-            # result_description and sex_chromosomes are now combo boxes
+            # result_description, sex_chromosomes, interpretation are now combo boxes
             form['result_description'].setCurrentText(last_embryo.get('result_description', ''))
             form['autosomes'].setText(last_embryo.get('autosomes', ''))
             form['sex_chromosomes'].setCurrentText(last_embryo.get('sex_chromosomes', 'Normal'))
+            if 'interpretation' in form and hasattr(form['interpretation'], 'setCurrentText'):
+                form['interpretation'].blockSignals(True)
+                form['interpretation'].setCurrentText(last_embryo.get('interpretation', ''))
+                form['interpretation'].blockSignals(False)
             
             # Chromosomes
             chr_statuses = last_embryo.get('chromosome_statuses', {})
@@ -2059,7 +2106,7 @@ class PGTAReportGeneratorApp(QMainWindow):
                 detail_id = embryo.get('embryo_id_detail') or embryo.get('embryo_id', f'PS{idx+1}')
                 form['embryo_id_input'].setText(detail_id)
             
-            # result_description and sex_chromosomes are now combo boxes
+            # result_description, sex_chromosomes, interpretation are combo boxes
             if hasattr(form['result_description'], 'setCurrentText'):
                 form['result_description'].setCurrentText(embryo.get('result_description', ''))
             else:
@@ -2069,6 +2116,10 @@ class PGTAReportGeneratorApp(QMainWindow):
                 form['sex_chromosomes'].setCurrentText(embryo.get('sex_chromosomes', 'Normal'))
             else:
                 form['sex_chromosomes'].setText(embryo.get('sex_chromosomes', ''))
+            if 'interpretation' in form and hasattr(form['interpretation'], 'setCurrentText'):
+                form['interpretation'].blockSignals(True)
+                form['interpretation'].setCurrentText(embryo.get('interpretation', 'Euploid'))
+                form['interpretation'].blockSignals(False)
             
             # Image
             path = embryo.get('cnv_image_path')

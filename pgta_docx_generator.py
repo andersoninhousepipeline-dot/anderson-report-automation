@@ -327,7 +327,8 @@ class PGTADocxGenerator:
             res_val = res_sum.upper()
             
             if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
-                interp = "Aneuploid"
+                if not any(x in interp.upper() for x in ["MOSAIC", "CHAOTIC"]):
+                    interp = "Aneuploid"
             elif not self._is_abnormal(auto_val) and not self._is_abnormal(sex_val) and not self._is_abnormal(res_val):
                 if "MOSAIC" not in auto_val and "MOSAIC" not in sex_val and "MOSAIC" not in res_val:
                     is_a_n = not auto_val or "NORMAL" in auto_val or "EUPLOID" in auto_val
@@ -500,7 +501,8 @@ class PGTADocxGenerator:
         sex_val = sex.upper()
         res_val = res.upper()
         if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
-            interp = "Aneuploid"
+            if not any(x in interp.upper() for x in ["MOSAIC", "CHAOTIC"]):
+                interp = "Aneuploid"
         elif not self._is_abnormal(auto_val) and not self._is_abnormal(sex_val) and not self._is_abnormal(res_val):
             if "MOSAIC" not in auto_val and "MOSAIC" not in sex_val and "MOSAIC" not in res_val:
                 is_a_n = not auto_val or "NORMAL" in auto_val or "EUPLOID" in auto_val
