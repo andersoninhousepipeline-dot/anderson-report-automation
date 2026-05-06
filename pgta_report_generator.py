@@ -1021,10 +1021,19 @@ class PGTAReportGeneratorApp(QMainWindow):
         autosomes.textChanged.connect(check_manual_interp)
         sex_chromosomes.currentTextChanged.connect(check_manual_interp)
         # Trigger when result_summary changes (Low DNA / Inconclusive → NA)
+        # Guard against RuntimeError: widget deleted when form is rebuilt
         if self.summary_table.rowCount() >= embryo_num:
             _rs_w = self.summary_table.cellWidget(embryo_num - 1, 1)
             if _rs_w:
-                _rs_w.currentTextChanged.connect(lambda _: check_manual_interp())
+                def _on_result_sum_changed(_=None, _w=_rs_w):
+                    try:
+                        check_manual_interp()
+                    except RuntimeError:
+                        try:
+                            _w.currentTextChanged.disconnect(_on_result_sum_changed)
+                        except Exception:
+                            pass
+                _rs_w.currentTextChanged.connect(_on_result_sum_changed)
 
         form.addRow("Result Description (Page 4):", result_description)
         form.addRow("Autosomes:", autosomes)
