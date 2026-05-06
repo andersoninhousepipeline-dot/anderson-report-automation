@@ -667,11 +667,9 @@ class PGTAReportTemplate:
             if 'MOSAIC' in res_sum.upper() or 'MOSAIC' in interp.upper():
                 res_color = colors.blue
 
-            # MTcopy: mosaic % for mosaic, NA for other non-euploid
+            # MTcopy: only shown for Euploid
             mtcopy = self._clean(embryo.get('mtcopy'), 'NA')
-            if "MOSAIC" in interp.upper():
-                pass  # keep mosaic percentage
-            elif interp.upper() != "EUPLOID":
+            if interp.upper() != "EUPLOID":
                 mtcopy = "NA"
             
             data.append([
@@ -884,13 +882,8 @@ class PGTAReportTemplate:
 
         # MTcopy: mosaic % for mosaic, NA for other non-euploid
         mtcopy = self._clean(embryo_data.get('mtcopy'), 'NA')
-        if "MOSAIC" in interp_text.upper():
-            if not mtcopy or mtcopy.upper() == "NA":
-                import re as _re
-                pcts = _re.findall(r'(\d+)%', auto_val)
-                if pcts:
-                    mtcopy = f"{max(int(p) for p in pcts)}%"
-        elif interp_text.upper() != "EUPLOID":
+        # MTcopy: only shown for Euploid
+        if interp_text.upper() != "EUPLOID":
             mtcopy = "NA"
             
         # Recalculate interpretation color AFTER logic has potentially changed it to Aneuploid

@@ -1847,11 +1847,9 @@ class PGTAReportGeneratorApp(QMainWindow):
             interp = embryo.get('interpretation', '')
             color_class = self._get_preview_color_class(res_sum, interp)
             
-            # MTcopy: percentage for mosaic, NA for other non-euploid
+            # MTcopy: only shown for Euploid
             mtcopy = embryo.get('mtcopy', 'NA')
-            if "MOSAIC" in interp.upper():
-                pass  # keep mosaic percentage
-            elif interp.upper() != "EUPLOID":
+            if interp.upper() != "EUPLOID":
                 mtcopy = "NA"
                 
             html += f"""

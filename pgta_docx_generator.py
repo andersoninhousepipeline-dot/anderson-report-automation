@@ -341,9 +341,8 @@ class PGTADocxGenerator:
                     if is_a_n and is_s_n and is_r_n:
                         interp = "Euploid"
 
-            if "MOSAIC" in interp.upper():
-                pass  # keep mosaic percentage
-            elif interp.upper() != "EUPLOID":
+            # MTcopy: only shown for Euploid
+            if interp.upper() != "EUPLOID":
                 mt = "NA"
 
             row.cells[2].text = res_sum
@@ -517,14 +516,9 @@ class PGTADocxGenerator:
                 if is_a_n and is_s_n and is_r_n:
                     interp = "Euploid"
 
+        # MTcopy: only shown for Euploid
         mt = self._clean(embryo_data.get('mtcopy'), 'NA')
-        if "MOSAIC" in interp.upper():
-            if not mt or mt.upper() == "NA":
-                import re as _re
-                pcts = _re.findall(r'(\d+)%', auto_val)
-                if pcts:
-                    mt = f"{max(int(p) for p in pcts)}%"
-        elif interp.upper() != "EUPLOID":
+        if interp.upper() != "EUPLOID":
             mt = "NA"
         
         result_desc_text = self._clean(embryo_data.get('result_description', ''))
