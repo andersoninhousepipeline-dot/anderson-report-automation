@@ -326,11 +326,13 @@ class PGTADocxGenerator:
             sex_val = self._clean(emb.get('sex_chromosomes', 'Normal')).upper()
             res_val = res_sum.upper()
             
-            if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
-                if not any(x in interp.upper() for x in ["MOSAIC", "CHAOTIC"]):
+            # Only auto-derive interpretation when not explicitly set by user
+            if not interp or interp.upper() == "NA":
+                if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
                     interp = "Aneuploid"
-            elif not self._is_abnormal(auto_val) and not self._is_abnormal(sex_val) and not self._is_abnormal(res_val):
-                if "MOSAIC" not in auto_val and "MOSAIC" not in sex_val and "MOSAIC" not in res_val:
+                elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val:
+                    interp = "Low level mosaic"
+                else:
                     is_a_n = not auto_val or "NORMAL" in auto_val or "EUPLOID" in auto_val
                     is_s_n = not sex_val or "NORMAL" in sex_val or "EUPLOID" in sex_val
                     is_r_n = not res_val or "NORMAL" in res_val or "EUPLOID" in res_val
@@ -500,11 +502,13 @@ class PGTADocxGenerator:
         auto_val = auto.upper()
         sex_val = sex.upper()
         res_val = res.upper()
-        if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
-            if not any(x in interp.upper() for x in ["MOSAIC", "CHAOTIC"]):
+        # Only auto-derive interpretation when not explicitly set by user
+        if not interp or interp.upper() == "NA":
+            if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
                 interp = "Aneuploid"
-        elif not self._is_abnormal(auto_val) and not self._is_abnormal(sex_val) and not self._is_abnormal(res_val):
-            if "MOSAIC" not in auto_val and "MOSAIC" not in sex_val and "MOSAIC" not in res_val:
+            elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val:
+                interp = "Low level mosaic"
+            else:
                 is_a_n = not auto_val or "NORMAL" in auto_val or "EUPLOID" in auto_val
                 is_s_n = not sex_val or "NORMAL" in sex_val or "EUPLOID" in sex_val
                 is_r_n = not res_val or "NORMAL" in res_val or "EUPLOID" in res_val
