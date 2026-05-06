@@ -336,7 +336,10 @@ class PGTADocxGenerator:
                     if is_a_n and is_s_n and is_r_n:
                         interp = "Euploid"
 
-            if interp.upper() != "EUPLOID": mt = "NA"
+            if "MOSAIC" in interp.upper():
+                pass  # keep mosaic percentage
+            elif interp.upper() != "EUPLOID":
+                mt = "NA"
 
             row.cells[2].text = res_sum
             row.cells[3].text = mt
@@ -507,7 +510,10 @@ class PGTADocxGenerator:
                     interp = "Euploid"
 
         mt = self._clean(embryo_data.get('mtcopy'), 'NA')
-        if interp.upper() != "EUPLOID": mt = "NA"
+        if "MOSAIC" in interp.upper():
+            pass  # keep mosaic percentage
+        elif interp.upper() != "EUPLOID":
+            mt = "NA"
         
         result_desc_text = self._clean(embryo_data.get('result_description', ''))
         interp_color = self._get_result_color_hex(res, interp)
@@ -516,7 +522,7 @@ class PGTADocxGenerator:
         details = [
             ("Result:", res, res_row_color),
             ("Autosomes:", auto, self._get_status_color_docx(auto)),
-            ("Sex Chromosomes:", sex, "#FF0000" if "ABNORMAL" in sex.upper() else "#000000"),
+            ("Sex Chromosomes:", sex, "#0000FF" if "MOSAIC" in sex.upper() else ("#FF0000" if "ABNORMAL" in sex.upper() else "#000000")),
             ("Interpretation:", interp, interp_color),
             ("MTcopy:", mt, "#000000")
         ]
@@ -684,11 +690,10 @@ class PGTADocxGenerator:
         if "EUPLOID" in i and "ANEUPLOID" not in i:
             return "#000000"
         if any(k in i for k in ["ANEUPLOID", "ABNORMAL"]): return "#FF0000"
-        if any(k in r for k in ["ANEUPLOID", "ABNORMAL"]): return "#FF0000"
-        # Blue for mosaic results
         r = str(res).upper()
-        blue_keywords = ["MULTIPLE MOSAIC CHROMOSOME COMPLEMENT", "MOSAIC CHROMOSOME COMPLEMENT", "COMPLEX MOSAIC"]
-        if any(kw in i for kw in blue_keywords) or any(kw in r for kw in blue_keywords):
+        if any(k in r for k in ["ANEUPLOID", "ABNORMAL"]): return "#FF0000"
+        # Blue for any mosaic interpretation or result
+        if "MOSAIC" in i or "MOSAIC" in r:
             return "#0000FF"
         return "#000000"
 

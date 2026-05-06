@@ -662,9 +662,11 @@ class PGTAReportTemplate:
             if 'MOSAIC' in res_sum.upper() or 'MOSAIC' in interp.upper():
                 res_color = colors.blue
 
-            # MTcopy: NA for non-euploid
+            # MTcopy: mosaic % for mosaic, NA for other non-euploid
             mtcopy = self._clean(embryo.get('mtcopy'), 'NA')
-            if interp.upper() != "EUPLOID":
+            if "MOSAIC" in interp.upper():
+                pass  # keep mosaic percentage
+            elif interp.upper() != "EUPLOID":
                 mtcopy = "NA"
             
             data.append([
@@ -870,9 +872,11 @@ class PGTAReportTemplate:
                 if is_a_n and is_s_n and is_r_n:
                     interp_text = "Euploid"
 
-        # MTcopy: NA for non-euploid
+        # MTcopy: mosaic % for mosaic, NA for other non-euploid
         mtcopy = self._clean(embryo_data.get('mtcopy'), 'NA')
-        if interp_text.upper() != "EUPLOID":
+        if "MOSAIC" in interp_text.upper():
+            pass  # keep mosaic percentage
+        elif interp_text.upper() != "EUPLOID":
             mtcopy = "NA"
             
         # Recalculate interpretation color AFTER logic has potentially changed it to Aneuploid
@@ -1177,9 +1181,8 @@ class PGTAReportTemplate:
         if any(kw in res_up for kw in red_keywords) or any(kw in int_up for kw in red_keywords):
             return colors.red
             
-        # Blue for mosaic results
-        blue_keywords = ["MULTIPLE MOSAIC CHROMOSOME COMPLEMENT", "MOSAIC CHROMOSOME COMPLEMENT", "COMPLEX MOSAIC"]
-        if any(kw in res_up for kw in blue_keywords) or any(kw in int_up for kw in blue_keywords):
+        # Blue for mosaic results (any mosaic interpretation or result)
+        if "MOSAIC" in int_up or "MOSAIC" in res_up:
             return colors.blue
 
         return colors.black

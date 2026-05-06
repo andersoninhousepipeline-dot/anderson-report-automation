@@ -950,6 +950,10 @@ class PGTAReportGeneratorApp(QMainWindow):
                         interp_widget.setCurrentText("Euploid")
                     elif sex_text == "abnormal" or (auto_text not in ("", "normal") and "mosaic" not in auto_text):
                         interp_widget.setCurrentText("Aneuploid")
+                    elif sex_text == "mosaic" or "mosaic" in auto_text:
+                        cur = interp_widget.currentText().lower()
+                        if "mosaic" not in cur:
+                            interp_widget.setCurrentText("Low level mosaic")
             self.update_preview()
 
         autosomes.textChanged.connect(check_manual_interp)
@@ -1770,9 +1774,11 @@ class PGTAReportGeneratorApp(QMainWindow):
             interp = embryo.get('interpretation', '')
             color_class = self._get_preview_color_class(res_sum, interp)
             
-            # MTcopy: NA for non-euploid
+            # MTcopy: percentage for mosaic, NA for other non-euploid
             mtcopy = embryo.get('mtcopy', 'NA')
-            if interp.upper() != "EUPLOID":
+            if "MOSAIC" in interp.upper():
+                pass  # keep mosaic percentage
+            elif interp.upper() != "EUPLOID":
                 mtcopy = "NA"
                 
             html += f"""
@@ -5241,6 +5247,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                         conclusion_upper = conclusion.upper()
                         result_summary_val = "Normal chromosome complement"  # Default
                         interp = "NA"  # Default interpretation
+                        mosaic_mtcopy = ""  # Mosaic percentage for MTcopy field
                         # Handle QC failures and special cases
                         if 'LOW' in result_col.upper() and ('DNA' in result_col.upper() or 'READS' in result_col.upper()):
                             result_summary_val = "Low DNA concentration"
@@ -5256,17 +5263,22 @@ Use null for fields not found. Return ONLY valid JSON."""
                             interp = "NA"
                         elif "MOSAIC" in conclusion_upper or "MOSAIC" in result_col.upper():
                             result_summary_val = "Mosaic chromosome complement"
-                            # Determine mosaic level from percentage if available
                             import re as re_local
-                            mos_match = re_local.search(r'(\d+)%', result_col)
-                            if mos_match:
-                                mos_pct = int(mos_match.group(1))
+                            mos_pcts = [int(p) for p in re_local.findall(r'(\d+)%', result_col)]
+                            mos_entry_count = len(re_local.findall(r'\bmos\b', result_col, re_local.IGNORECASE))
+                            if mos_entry_count >= 3 or len(mos_pcts) >= 3:
+                                interp = "Complex mosaic"
+                                mosaic_mtcopy = ", ".join(f"{p}%" for p in mos_pcts) if mos_pcts else ""
+                            elif mos_pcts:
+                                mos_pct = max(mos_pcts)
                                 if mos_pct >= 50:
                                     interp = "High level mosaic"
                                 else:
                                     interp = "Low level mosaic"
+                                mosaic_mtcopy = f"{mos_pct}%"
                             else:
                                 interp = "Low level mosaic"
+                                mosaic_mtcopy = ""
                         elif "ABNORMAL" in conclusion_upper or conclusion_upper == 'ABNORMAL':
                             # Check if multiple abnormalities
                             abnormal_count = result_col.count(',') + 1 if ',' in result_col else 1
@@ -5462,7 +5474,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                             'result_description': long_desc, # Mapped long text
                             'autosomes': autosomes_val,
                             'sex_chromosomes': sex_chr_val,
-                            'mtcopy': str(s_row.get('MTcopy', 'NA')),
+                            'mtcopy': mosaic_mtcopy if ("MOSAIC" in interp.upper() and mosaic_mtcopy) else str(s_row.get('MTcopy', 'NA')),
                             'cnv_image_path': cnv_image_path,
                             'chromosome_statuses': chr_statuses,
                             'mosaic_percentages': mosaic_percentages # Pass properly
@@ -5686,13 +5698,18 @@ Use null for fields not found. Return ONLY valid JSON."""
                 if is_v_abnorm(auto_val) or is_v_abnorm(sex_val) or is_v_abnorm(res_val):
                     e_interp.setCurrentText("Aneuploid")
                 elif not is_v_abnorm(auto_val) and not is_v_abnorm(sex_val) and not is_v_abnorm(res_val):
-                    if "MOSAIC" not in auto_val and "MOSAIC" not in sex_val and "MOSAIC" not in res_val:
+                    has_mosaic = "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val
+                    if has_mosaic:
+                        cur = e_interp.currentText().upper()
+                        if "MOSAIC" not in cur:
+                            e_interp.setCurrentText("Low level mosaic")
+                    else:
                         is_a_n = not auto_val or "NORMAL" in auto_val or "EUPLOID" in auto_val
                         is_s_n = not sex_val or "NORMAL" in sex_val or "EUPLOID" in sex_val
                         is_r_n = not res_val or "NORMAL" in res_val or "EUPLOID" in res_val
                         if is_a_n and is_s_n and is_r_n:
                             e_interp.setCurrentText("Euploid")
-                
+
                 self.update_batch_preview()
 
             e_autosomes.textChanged.connect(check_batch_interp)
