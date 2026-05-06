@@ -330,8 +330,8 @@ class PGTADocxGenerator:
             if not interp:
                 if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
                     interp = "Aneuploid"
-                elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val:
-                    interp = "Low level mosaic"
+                elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val or "%" in auto_val:
+                    interp = self._mosaic_level(auto_val + " " + sex_val)
                 else:
                     is_a_n = not auto_val or "NORMAL" in auto_val or "EUPLOID" in auto_val
                     is_s_n = not sex_val or "NORMAL" in sex_val or "EUPLOID" in sex_val
@@ -506,8 +506,8 @@ class PGTADocxGenerator:
         if not interp:
             if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
                 interp = "Aneuploid"
-            elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val:
-                interp = "Low level mosaic"
+            elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val or "%" in auto_val:
+                interp = self._mosaic_level(auto_val + " " + sex_val)
             else:
                 is_a_n = not auto_val or "NORMAL" in auto_val or "EUPLOID" in auto_val
                 is_s_n = not sex_val or "NORMAL" in sex_val or "EUPLOID" in sex_val
@@ -517,7 +517,11 @@ class PGTADocxGenerator:
 
         mt = self._clean(embryo_data.get('mtcopy'), 'NA')
         if "MOSAIC" in interp.upper():
-            pass  # keep mosaic percentage
+            if not mt or mt.upper() == "NA":
+                import re as _re
+                pcts = _re.findall(r'(\d+)%', auto_val)
+                if pcts:
+                    mt = f"{max(int(p) for p in pcts)}%"
         elif interp.upper() != "EUPLOID":
             mt = "NA"
         
@@ -677,6 +681,17 @@ class PGTADocxGenerator:
             p2 = cell.add_paragraph(title); p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
             self._set_paragraph_font(p2, font_size=11)
 
+    def _mosaic_level(self, combined_text):
+        """Determine Low/High/Complex mosaic level from text containing mosaic percentages."""
+        import re as _re
+        pcts = [int(p) for p in _re.findall(r'(\d+)%', combined_text)]
+        entries = len(_re.findall(r'(?:mos|\(\~?\d+%)', combined_text, _re.IGNORECASE))
+        if entries >= 3 or len(pcts) >= 3:
+            return "Complex mosaic"
+        if pcts:
+            return "High level mosaic" if max(pcts) >= 50 else "Low level mosaic"
+        return "Low level mosaic"
+
     def _is_abnormal(self, val):
         """Helper to determine if a result field indicates an abnormality (not Normal/Euploid/Mosaic)"""
         if not val: return False
@@ -684,7 +699,7 @@ class PGTADocxGenerator:
         if "ABNORMAL" in v: return True
         if any(x in v for x in ["NORMAL", "EUPLOID", "NO COPY NUMBER ABNORMALITY"]):
             return False
-        if "MOSAIC" in v:
+        if "MOSAIC" in v or "%" in v:  # % indicates mosaic percentage (e.g. +21(~54%))
             return False
         if v == "NA": return False
         return True

@@ -650,8 +650,8 @@ class PGTAReportTemplate:
             if not interp:
                 if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
                     interp = "Aneuploid"
-                elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val:
-                    interp = "Low level mosaic"
+                elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val or "%" in auto_val:
+                    interp = self._mosaic_level(auto_val + " " + sex_val)
                 else:
                     is_a_n = not auto_val or "NORMAL" in auto_val or "EUPLOID" in auto_val
                     is_s_n = not sex_val or "NORMAL" in sex_val or "EUPLOID" in sex_val
@@ -869,8 +869,8 @@ class PGTAReportTemplate:
         if not interp_text:
             if self._is_abnormal(auto_val) or self._is_abnormal(sex_val) or self._is_abnormal(res_val):
                 interp_text = "Aneuploid"
-            elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val:
-                interp_text = "Low level mosaic"
+            elif "MOSAIC" in auto_val or "MOSAIC" in sex_val or "MOSAIC" in res_val or "%" in auto_val:
+                interp_text = self._mosaic_level(auto_val + " " + sex_val)
             else:
                 is_a_n = not auto_val or "NORMAL" in auto_val or "EUPLOID" in auto_val
                 is_s_n = not sex_val or "NORMAL" in sex_val or "EUPLOID" in sex_val
@@ -881,7 +881,11 @@ class PGTAReportTemplate:
         # MTcopy: mosaic % for mosaic, NA for other non-euploid
         mtcopy = self._clean(embryo_data.get('mtcopy'), 'NA')
         if "MOSAIC" in interp_text.upper():
-            pass  # keep mosaic percentage
+            if not mtcopy or mtcopy.upper() == "NA":
+                import re as _re
+                pcts = _re.findall(r'(\d+)%', auto_val)
+                if pcts:
+                    mtcopy = f"{max(int(p) for p in pcts)}%"
         elif interp_text.upper() != "EUPLOID":
             mtcopy = "NA"
             
@@ -1160,6 +1164,17 @@ class PGTAReportTemplate:
         ] + self._get_grid_style()))
         return header_table
 
+    def _mosaic_level(self, combined_text):
+        """Determine Low/High/Complex mosaic level from a text containing mosaic percentages."""
+        import re as _re
+        pcts = [int(p) for p in _re.findall(r'(\d+)%', combined_text)]
+        entries = len(_re.findall(r'(?:mos|\(\~?\d+%)', combined_text, _re.IGNORECASE))
+        if entries >= 3 or len(pcts) >= 3:
+            return "Complex mosaic"
+        if pcts:
+            return "High level mosaic" if max(pcts) >= 50 else "Low level mosaic"
+        return "Low level mosaic"
+
     def _is_abnormal(self, val):
         """Helper to determine if a result field indicates an abnormality (not Normal/Euploid/Mosaic)"""
         if not val: return False
@@ -1167,7 +1182,7 @@ class PGTAReportTemplate:
         if "ABNORMAL" in v: return True
         if any(x in v for x in ["NORMAL", "EUPLOID", "NO COPY NUMBER ABNORMALITY"]):
             return False
-        if "MOSAIC" in v:
+        if "MOSAIC" in v or "%" in v:  # % indicates mosaic percentage (e.g. +21(~54%))
             return False
         if v == "NA": return False
         return True
