@@ -1003,10 +1003,18 @@ class PGTAReportGeneratorApp(QMainWindow):
             cur_lower = cur.lower()
             if auto_text == "normal" and sex_text == "normal":
                 _apply_interp("Euploid")
-            elif sex_text == "abnormal" or (auto_text not in ("", "normal") and "mosaic" not in auto_text):
+            elif sex_text == "abnormal" or (auto_text not in ("", "normal") and "mosaic" not in auto_text and "%" not in auto_text):
                 _apply_interp("Aneuploid")
-            elif sex_text == "mosaic" or "mosaic" in auto_text:
-                if "mosaic" not in cur_lower:
+            elif sex_text == "mosaic" or "mosaic" in auto_text or "%" in auto_text:
+                import re as _re
+                combined = auto_text + " " + sex_text
+                pcts = [int(p) for p in _re.findall(r'(\d+)%', combined)]
+                entries = len(_re.findall(r'(?:mos|\(\~?\d+%)', combined, _re.IGNORECASE))
+                if entries >= 3 or len(pcts) >= 3:
+                    _apply_interp("Complex mosaic")
+                elif pcts:
+                    _apply_interp("High level mosaic" if max(pcts) >= 51 else "Low level mosaic")
+                else:
                     _apply_interp("Low level mosaic")
             self.update_preview()
 
@@ -5340,7 +5348,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                                 mosaic_mtcopy = ", ".join(f"{p}%" for p in mos_pcts) if mos_pcts else ""
                             elif mos_pcts:
                                 mos_pct = max(mos_pcts)
-                                if mos_pct >= 50:
+                                if mos_pct >= 51:
                                     interp = "High level mosaic"
                                 else:
                                     interp = "Low level mosaic"
@@ -5377,7 +5385,7 @@ Use null for fields not found. Return ONLY valid JSON."""
                             if "ABNORMAL" in v: return True
                             if any(x in v for x in ["NORMAL", "EUPLOID", "NO COPY NUMBER ABNORMALITY"]):
                                 return False
-                            if "MOSAIC" in v:
+                            if "MOSAIC" in v or "%" in v:
                                 return False
                             if v == "NA": return False
                             return True

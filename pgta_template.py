@@ -1176,7 +1176,7 @@ class PGTAReportTemplate:
         if entries >= 3 or len(pcts) >= 3:
             return "Complex mosaic"
         if pcts:
-            return "High level mosaic" if max(pcts) >= 50 else "Low level mosaic"
+            return "High level mosaic" if max(pcts) >= 51 else "Low level mosaic"
         return "Low level mosaic"
 
     def _is_abnormal(self, val):

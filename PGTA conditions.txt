@@ -1,0 +1,43 @@
+AUTOSOMES: Multiple chromosomal abnormalities ( Mention in Red colour).
+CNV STATUS : SL/SG, SG/SL (Mention in Red colour).
+             SML/SMG, SMG/SML (Mention in Blue colour).
+If Autosomes is normal & Sex chromosome is Mosaic gain/loss, (Mosaic(%)) row is no mention below cnv status.
+Include Kit word in Methodology.
+Include Rows & Coloumn lines in Patient information. 
+
+RESULT SUMMARY (Result):
+       Normal chromosome complement (Black colour)
+       Multiple chromosomal abnormalities (Red colour)
+       Mosaic chromosome complement (Blue colour)
+       Inconclusive (Black colour)
+       Low DNA concentration (Black colour)
+
+INTERPRETATION: Include NA (Black colour) & Chaotic embryo (Red colour)
+
+EMBRYO RESULT PAGE (Result): Mention in black colour
+       The embryo contains normal chromosome complement
+       The embryo contains abnormal chromosome complement
+       The embryo contains mosaic chromosome complement
+       Inconclusive
+
+SEX CHROMOSOME: Normal (Black colour)
+                Abnormal (Red colour)
+		Mosaic (blue colour)
+
+AUTOSOMES:
+        -16: 16 chromosome CNV status L (Red colour)
+        +7 :  7 chromosome CNV status G (Red colour)
+        del(16)(p12.3q24.3)(~69.35Mb):  16 chromosome, CNV status SL (Red colour)
+        dup(1)(p36.23p34.3)(~29.00Mb):  1 chromosome, CNV status SG (Red colour)
+        dup(1)(q21.1q23.1)(~13.50Mb),dup(11)(p15.5p11.12)(~49.00Mb),dup(13)(q14.3q21.31)(~11.00Mb),+21: 1 SG, 11 SG, 13 SG, 21 G (Red colour)
+        +15(~30%):  15 chromosome, CNV status MG, Mosaic(%) 30 (Blue colour)
+        -20(~51%):  20 chromosome, CNV status ML, Mosaic(%) 51 (Blue colour)
+        dup(9)(p22.33p21.1)(~30.50Mb,~32%): 9 chormosome, CNV status SMG, Mosaic(%) 32 (Blue colour)
+        del(1)(q42.2q44)(~17.25Mb,~41%): 1 chromosome, CNV status SML, Mosaic(%) 41 (Blue colour)
+
+ 
+ Interpretation is Aneuploid/Chaotic embryo, Autosomes mention in Red Colour.
+ Interpretation is Low level/highlevel/complex mosaic, Autosomes mention in Blue Colour.
+ Inconclusive mention in Black colour.
+ Include (-) & Chaotic embryo in Interpretation.
+ 
